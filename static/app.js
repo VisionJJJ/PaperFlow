@@ -982,6 +982,167 @@ async function renderMyPage() {
   });
 }
 
+buildReaderEmptyState = function buildReaderEmptyStateUpdated(mode) {
+  const title = mode === "today" ? "今天没有新的论文卡片" : "当前没有待阅读论文";
+  const body =
+    mode === "today"
+      ? "可以切到待阅读继续处理，或者进入图片预览快速浏览配图。"
+      : "同步 RSS 后，这里会展示尚未处理的历史论文。";
+  return `
+    <div class="panel empty-state">
+      <h3>${title}</h3>
+      <p>${body}</p>
+    </div>
+  `;
+};
+
+renderOverview = function renderOverviewUpdated() {
+  if (!state.overview) return;
+  const labels = {
+    today: "今日更新",
+    queue: "待阅读",
+    images: "图片预览",
+  };
+  document.querySelectorAll(".mode-tab").forEach((button) => {
+    button.textContent = labels[button.dataset.mode] || button.textContent;
+  });
+};
+
+syncFeeds = async function syncFeedsUpdated() {
+  setSyncButtonsState(true);
+  try {
+    await api("/api/sync", {
+      method: "POST",
+      body: JSON.stringify({ rssUrl: "https://www.nature.com/ncomms.rss" }),
+    });
+    resetFeeds();
+    await loadBootstrap();
+    await switchMode(state.mode);
+  } finally {
+    setSyncButtonsState(false);
+  }
+};
+
+renderReader = function renderReaderUpdated() {
+  const feed = currentFeed();
+  const detail = activeDetail();
+  const progress = state.overview?.progress || { todayHandled: 0, todayTotal: 0 };
+
+  if (!feed.ids.length && !feed.loading) {
+    refs.readerPanel.innerHTML = buildReaderEmptyState(state.mode);
+    return;
+  }
+
+  if (!detail) {
+    refs.readerPanel.innerHTML = `
+      <div class="panel placeholder-card">
+        <p>正在批量加载卡片详情...</p>
+      </div>
+    `;
+    return;
+  }
+
+  const figures = detail.figures || [];
+  primeFigureSet(figures);
+  const activeFigure = figures[feed.activeFigure] || null;
+  const abstractText = detail.abstract || "暂无摘要";
+  const keywords = (detail.keywords?.length ? detail.keywords : ["待补充字段"])
+    .map((item) => `<span class="keyword">${escapeHtml(item)}</span>`)
+    .join("");
+  const thumbs = figures
+    .map(
+      (figure, index) => `
+        <button class="thumbnail-button contain-thumb ${index === feed.activeFigure ? "active" : ""}" data-figure-index="${index}">
+          <img src="${escapeHtml(figure.image_url)}" alt="${escapeHtml(figure.title)}" loading="lazy" />
+        </button>
+      `,
+    )
+    .join("");
+
+  refs.readerPanel.innerHTML = `
+    <article class="panel reader-card featured ${detail.state?.status === "saved" ? "has-note-strip" : ""}" id="swipeSurface">
+      <div class="status-line">
+        <span>${state.mode === "today" ? "今日更新" : "待阅读"} · ${feed.currentIndex + 1} / ${Math.max(feed.total, feed.ids.length)}</span>
+        <span>${escapeHtml(articleStatusLabel(detail))}</span>
+      </div>
+      ${state.mode === "today" ? `<div class="progress-bar"><span style="width:${progress.todayTotal ? (progress.todayHandled / progress.todayTotal) * 100 : 0}%"></span></div>` : ""}
+
+      <div class="headline-block">
+        <div class="issue-line">
+          <span class="meta-line">${escapeHtml(formatDate(detail.published_at))}</span>
+          <span class="journal-pill">${escapeHtml(detail.journal_title || detail.subscription_name || "Nature")}</span>
+          <span class="meta-line">${escapeHtml(detail.article_type || "Article")}</span>
+        </div>
+        <h2 class="card-title">${escapeHtml(detail.title || detail.rss_title || "Untitled")}</h2>
+        <div class="keyword-row">${keywords}</div>
+      </div>
+
+      <div class="media-stage">
+        <div class="image-stage-shell image-stage-fixed">
+          <div class="hero-image ${activeFigure ? "" : "placeholder"}">
+            ${activeFigure ? `<div class="image-frame"><canvas class="reader-image-canvas" aria-label="${escapeHtml(activeFigure.title || "article figure")}" role="img"></canvas></div>` : ""}
+          </div>
+        </div>
+        ${figures.length ? `<div class="thumb-strip">${thumbs}</div>` : ""}
+      </div>
+
+      <div class="reader-footer">
+        ${
+          detail.state?.status === "saved"
+            ? `
+          <section class="saved-note-strip">
+            <h3>备注</h3>
+            <div class="saved-note-controls">
+              <textarea id="noteInput" rows="2" placeholder="补一句备注，默认进入未分类。">${escapeHtml(detail.state?.note || "")}</textarea>
+              <button class="action-button saved" data-action="save-note">保存备注</button>
+            </div>
+          </section>
+        `
+            : ""
+        }
+
+        <section class="detail-panel ${feed.expanded ? "open" : ""}">
+          <div class="detail-list">
+            <div class="detail-item">
+              <strong>摘要</strong>
+              <div class="detail-copy">${escapeHtml(abstractText)}</div>
+            </div>
+            <div class="detail-item">
+              <strong>第一单位</strong>
+              <div class="detail-copy">${escapeHtml(detail.first_author_affiliation || "暂无")}</div>
+            </div>
+            <div class="detail-item">
+              <strong>作者</strong>
+              <div class="detail-copy">${escapeHtml((detail.authors || []).join(", ") || "暂无")}</div>
+            </div>
+            <div class="detail-item">
+              <strong>原文入口</strong>
+              <div class="detail-copy"><a href="${escapeHtml(detail.article_url)}" target="_blank" rel="noreferrer">查看原文</a></div>
+            </div>
+          </div>
+          <div class="action-group">
+            <button class="action-button" data-action="copy-link">复制原文链接</button>
+          </div>
+        </section>
+
+        <div class="action-row">
+          <div class="action-pack">
+            <button class="action-button warn" data-action="dismissed">不感兴趣</button>
+            <button class="action-button" data-action="previous" ${feed.history.length ? "" : "disabled"}>上一条</button>
+            <button class="action-button" data-action="toggle-details">${feed.expanded ? "收起详情" : "展开详情"}</button>
+            <button class="action-button ${detail.state?.status === "saved" ? "saved" : ""}" data-action="saved">${detail.state?.status === "saved" ? "已收藏" : "收藏论文"}</button>
+            <button class="action-button primary" data-action="next">下一条</button>
+          </div>
+        </div>
+      </div>
+    </article>
+  `;
+
+  applyReaderImageFitting();
+  attachReaderEvents();
+  maybePrefetchNext();
+};
+
 function attachGlobalEvents() {
   refs.syncButtons.forEach((button) => {
     button.addEventListener("click", syncFeeds);

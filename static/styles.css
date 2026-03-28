@@ -1296,3 +1296,240 @@ button {
     min-height: 36px;
   }
 }
+
+:root {
+  --mode-tabs-height: 56px;
+  --bottom-nav-height: 42px;
+}
+
+.app-shell {
+  width: 100vw;
+  max-width: none;
+  margin: 0;
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.layout,
+.screen {
+  gap: 0;
+}
+
+#homeSection {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+#mySection {
+  padding: 12px 12px 0;
+}
+
+.reader-panel,
+.image-panel {
+  padding: 12px 12px 0;
+}
+
+.mode-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: calc(var(--mode-tabs-height) + env(safe-area-inset-top));
+  padding: calc(env(safe-area-inset-top) + 6px) 10px 6px;
+  background: rgba(248, 244, 236, 0.98);
+  border: 0;
+  border-bottom: 1px solid rgba(23, 20, 18, 0.12);
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.mode-brand {
+  flex: 0 0 auto;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.mode-tab {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mode-tab:hover {
+  transform: none;
+  background: rgba(23, 20, 18, 0.06);
+}
+
+.mode-tab.active {
+  background: var(--ink);
+  color: white;
+  border-color: transparent;
+}
+
+.sync-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sync-button:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.reader-card {
+  gap: 14px;
+  padding: 16px 16px 8px;
+}
+
+.reader-footer {
+  gap: 10px;
+}
+
+.action-row {
+  margin-top: auto;
+  justify-content: flex-end;
+}
+
+.action-pack {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow-x: auto;
+  justify-content: flex-end;
+  scrollbar-width: none;
+}
+
+.action-pack::-webkit-scrollbar {
+  display: none;
+}
+
+.action-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.bottom-nav {
+  width: 100%;
+  min-height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  padding: 0 0 env(safe-area-inset-bottom);
+  background: rgba(248, 244, 236, 0.98);
+  border: 0;
+  border-top: 1px solid rgba(23, 20, 18, 0.12);
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+  margin: 0;
+  justify-self: stretch;
+}
+
+.nav-item {
+  min-height: var(--bottom-nav-height);
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 0 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.nav-item:last-child {
+  border-right: 0;
+}
+
+.nav-item:hover {
+  transform: none;
+  background: rgba(23, 20, 18, 0.06);
+}
+
+.nav-item.active {
+  background: var(--ink);
+  color: white;
+  border-color: transparent;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --mode-tabs-height: 48px;
+    --bottom-nav-height: 38px;
+  }
+
+  #mySection,
+  .reader-panel,
+  .image-panel {
+    padding: 10px 10px 0;
+  }
+
+  .mode-tabs {
+    gap: 4px;
+    padding: calc(env(safe-area-inset-top) + 4px) 6px 4px;
+  }
+
+  .mode-brand {
+    font-size: 0.84rem;
+  }
+
+  .mode-tab,
+  .sync-button {
+    min-height: 28px;
+    padding: 0 8px;
+    font-size: 0.76rem;
+  }
+
+  .reader-card {
+    gap: 10px;
+    padding: 14px 12px 6px;
+  }
+
+  .action-button {
+    font-size: 0.78rem;
+  }
+
+  .nav-item {
+    min-height: var(--bottom-nav-height);
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .mode-brand {
+    font-size: 0.8rem;
+  }
+
+  .mode-tab,
+  .sync-button {
+    font-size: 0.72rem;
+    padding: 0 6px;
+  }
+
+  .nav-item {
+    font-size: 0.78rem;
+  }
+}
