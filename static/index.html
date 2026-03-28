@@ -3,25 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Nature Flow Reader</title>
+    <title>PaperFlow</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="topbar-copy">
-          <p class="eyebrow">Nature Feed Prototype</p>
+          <p class="eyebrow">PaperFlow</p>
           <h1>Latest research articles</h1>
         </div>
-        <button id="syncButton" class="ghost-button">同步 RSS</button>
+        <button id="syncButton" class="ghost-button" data-sync-trigger="true">同步 RSS</button>
       </header>
 
       <main class="layout">
         <section id="homeSection" class="screen active">
           <div id="modeTabs" class="mode-tabs panel">
-            <button class="mode-tab active" data-mode="today">今日阅读</button>
-            <button class="mode-tab" data-mode="queue">待处理</button>
-            <button class="mode-tab" data-mode="images">图片速览</button>
+            <div class="mode-tabs-head">
+              <div class="mode-brand">PaperFlow</div>
+              <button class="ghost-button compact-sync-button" data-sync-trigger="true">同步</button>
+            </div>
+            <div class="mode-tab-row">
+              <button class="mode-tab active" data-mode="today">今日阅读</button>
+              <button class="mode-tab" data-mode="queue">待处理</button>
+              <button class="mode-tab" data-mode="images">图片速览</button>
+            </div>
           </div>
 
           <section id="readerPanel" class="reader-panel"></section>
@@ -69,7 +75,7 @@
                   <div class="settings-card">
                     <h3>设置</h3>
                     <p>当前为演示模式：默认游客可直接浏览，收藏和状态写入本地 JSON。</p>
-                    <p>后续可继续接登录、回收站、专栏 / 图集分类和后台规则维护。</p>
+                    <p>后续可继续接登录、回收站、专栏/图集分类和后台规则维护。</p>
                   </div>
                 </div>
               </div>
@@ -94,4 +100,4 @@
 
     <script src="/static/app.js" defer></script>
   </body>
-  </html>
+</html>

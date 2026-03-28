@@ -222,13 +222,31 @@ button {
 }
 
 .mode-tabs {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-rows: 1fr;
   gap: 10px;
   align-items: center;
   height: var(--mode-tabs-height);
   padding: 12px;
   overflow: hidden;
+}
+
+.mode-tabs-head {
+  display: none;
+}
+
+.mode-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.mode-brand {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .mode-tab,
@@ -894,34 +912,7 @@ button {
   }
 
   .topbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 6px 10px;
-    padding-top: 8px;
-    margin-bottom: 10px;
-    border-top-width: 5px;
-  }
-
-  .topbar-copy {
-    display: grid;
-    gap: 4px;
-    max-width: none;
-  }
-
-  .topbar h1 {
-    margin: 0;
-    max-width: 8ch;
-    font-size: 1.52rem;
-    line-height: 0.96;
-  }
-
-  #syncButton {
-    justify-self: end;
-    align-self: start;
-    white-space: nowrap;
-    padding: 8px 10px;
-    font-size: 0.8rem;
+    display: none;
   }
 
   .eyebrow,
@@ -932,11 +923,33 @@ button {
   }
 
   .mode-tabs {
+    grid-template-rows: auto 1fr;
+    gap: 8px;
+    padding: 8px 8px 6px;
+    border-radius: 22px;
+  }
+
+  .mode-tabs-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .mode-brand {
+    font-size: 0.94rem;
+  }
+
+  .compact-sync-button {
+    padding: 6px 10px;
+    font-size: 0.76rem;
+    white-space: nowrap;
+  }
+
+  .mode-tab-row {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
-    padding: 7px;
-    border-radius: 22px;
   }
 
   .mode-tab {
@@ -1189,7 +1202,7 @@ button {
 
 @media (max-width: 820px) and (orientation: portrait) {
   :root {
-    --mode-tabs-height: clamp(58px, 8.5svh, 70px);
+    --mode-tabs-height: clamp(70px, 11svh, 86px);
   }
 
   .app-shell {
@@ -1199,22 +1212,9 @@ button {
     padding: max(8px, 1.2svh) 0 calc(max(8px, 1svh) + env(safe-area-inset-bottom));
   }
 
-  .topbar {
-    min-height: 12svh;
-    margin-bottom: max(8px, 1svh);
-  }
-
-  .topbar h1 {
-    font-size: clamp(1.3rem, 6.2vw, 1.64rem);
-    max-width: 8.8ch;
-  }
-
-  #syncButton {
-    min-height: clamp(34px, 5.5svh, 42px);
-  }
-
   .mode-tabs {
     min-height: var(--mode-tabs-height);
+    align-content: center;
   }
 
   .mode-tab {

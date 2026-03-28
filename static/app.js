@@ -20,6 +20,7 @@ const state = {
 let readerImageResizeObserver = null;
 
 const refs = {
+  syncButtons: Array.from(document.querySelectorAll("[data-sync-trigger]")),
   syncButton: document.getElementById("syncButton"),
   modeTabs: document.getElementById("modeTabs"),
   bottomNav: document.getElementById("bottomNav"),
@@ -40,6 +41,16 @@ const refs = {
   imageModal: document.getElementById("imageModal"),
   modalBody: document.getElementById("modalBody"),
 };
+
+function setSyncButtonsState(isLoading) {
+  refs.syncButtons.forEach((button) => {
+    if (!button.dataset.idleLabel) {
+      button.dataset.idleLabel = button.textContent.trim();
+    }
+    button.disabled = isLoading;
+    button.textContent = isLoading ? "同步中..." : button.dataset.idleLabel;
+  });
+}
 
 function createFeedState() {
   return {
@@ -285,7 +296,7 @@ function renderOverview() {
 }
 
 async function syncFeeds() {
-  refs.syncButton.disabled = true;
+  setSyncButtonsState(true);
   refs.syncButton.textContent = "同步中...";
   try {
     await api("/api/sync", {
@@ -296,7 +307,7 @@ async function syncFeeds() {
     await loadBootstrap();
     await switchMode(state.mode);
   } finally {
-    refs.syncButton.disabled = false;
+    setSyncButtonsState(false);
     refs.syncButton.textContent = "同步 RSS";
   }
 }
@@ -982,7 +993,9 @@ async function renderMyPage() {
 }
 
 function attachGlobalEvents() {
-  refs.syncButton.addEventListener("click", syncFeeds);
+  refs.syncButtons.forEach((button) => {
+    button.addEventListener("click", syncFeeds);
+  });
 
   document.querySelectorAll(".mode-tab").forEach((button) => {
     button.addEventListener("click", async () => {
