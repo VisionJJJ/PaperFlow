@@ -1236,34 +1236,34 @@ updateReaderStageHeight = function updateReaderStageHeightUpdated() {
   let detailRatio = 0.28;
 
   if (isCompact) {
-    mediaRatio = 0.42;
-    mediaMax = 340;
-    titleFactor = 0.052;
+    mediaRatio = 0.3;
+    mediaMax = 230;
+    titleFactor = 0.05;
     titleMin = 22;
-    titleMax = 36;
-    headlineRatio = 0.22;
+    titleMax = 34;
+    headlineRatio = 0.3;
     thumbHeight = 54;
-    footerRatio = 0.22;
-    footerMin = 124;
+    footerRatio = 0.16;
+    footerMin = 84;
     detailRatio = 0.22;
   }
 
   if (isPhone) {
-    mediaRatio = 0.38;
-    mediaMax = 280;
-    titleFactor = 0.046;
+    mediaRatio = 0.26;
+    mediaMax = 200;
+    titleFactor = 0.044;
     titleMin = 18;
-    titleMax = 28;
-    headlineRatio = 0.18;
+    titleMax = 24;
+    headlineRatio = 0.32;
     thumbHeight = 46;
-    footerRatio = 0.18;
-    footerMin = 102;
+    footerRatio = 0.14;
+    footerMin = 72;
     detailRatio = 0.18;
   }
 
-  const mediaHeight = Math.max(180, Math.min(mediaMax, availableHeight * mediaRatio));
+  const mediaHeight = Math.max(isPhone ? 148 : 176, Math.min(mediaMax, availableHeight * mediaRatio));
   const titleSize = Math.max(titleMin, Math.min(titleMax, availableHeight * titleFactor));
-  const headlineMaxHeight = Math.max(108, availableHeight * headlineRatio);
+  const headlineMaxHeight = Math.max(isPhone ? 150 : 136, availableHeight * headlineRatio);
   const footerMaxHeight = Math.max(footerMin, availableHeight * footerRatio);
   const detailMaxHeight = Math.max(88, availableHeight * detailRatio);
 
