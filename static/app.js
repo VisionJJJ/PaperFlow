@@ -1143,6 +1143,69 @@ renderReader = function renderReaderUpdated() {
   maybePrefetchNext();
 };
 
+attachReaderEvents = function attachReaderEventsUpdated() {
+  const feed = currentFeed();
+  const figures = activeDetail()?.figures || [];
+
+  refs.readerPanel.querySelectorAll("[data-figure-index]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      feed.activeFigure = Number(button.dataset.figureIndex);
+      renderReader();
+    });
+  });
+
+  refs.readerPanel.querySelectorAll("[data-action]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await handleReaderAction(button.dataset.action);
+    });
+  });
+
+  const mediaStage = refs.readerPanel.querySelector(".media-stage");
+  if (mediaStage && figures.length > 1) {
+    let figureSwipeStartX = 0;
+    mediaStage.addEventListener("pointerdown", (event) => {
+      figureSwipeStartX = event.clientX;
+    });
+    mediaStage.addEventListener("pointerup", (event) => {
+      const delta = event.clientX - figureSwipeStartX;
+      if (Math.abs(delta) < 36) return;
+      event.stopPropagation();
+      const nextIndex =
+        delta < 0
+          ? Math.min(feed.activeFigure + 1, figures.length - 1)
+          : Math.max(feed.activeFigure - 1, 0);
+      if (nextIndex !== feed.activeFigure) {
+        feed.activeFigure = nextIndex;
+        renderReader();
+      }
+    });
+  }
+
+  const swipeSurface = document.getElementById("swipeSurface");
+  let startX = 0;
+  swipeSurface.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".media-stage, .action-button, .detail-panel, .saved-note-strip, a, textarea, input, button")) {
+      startX = 0;
+      return;
+    }
+    startX = event.clientX;
+  });
+  swipeSurface.addEventListener("pointerup", async (event) => {
+    if (!startX) return;
+    if (event.target.closest(".media-stage, .action-button, .detail-panel, .saved-note-strip, a, textarea, input, button")) {
+      startX = 0;
+      return;
+    }
+    const delta = event.clientX - startX;
+    startX = 0;
+    if (Math.abs(delta) < 56) return;
+    if (delta < 0) await handleReaderAction("next");
+    else if (feed.history.length) await handleReaderAction("previous");
+  });
+};
+
 updateReaderStageHeight = function updateReaderStageHeightUpdated() {
   const activePanel =
     state.screen === "collection"

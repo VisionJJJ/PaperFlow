@@ -1338,11 +1338,12 @@ button {
 .mode-tabs {
   display: grid;
   grid-template-columns: auto repeat(3, minmax(0, 1fr)) auto;
-  align-items: center;
+  align-items: stretch;
   gap: 4px;
   width: 100%;
-  min-height: calc(var(--mode-tabs-height) + env(safe-area-inset-top));
-  padding: calc(env(safe-area-inset-top) + 4px) 8px 4px;
+  height: calc(var(--mode-tabs-height) + env(safe-area-inset-top));
+  min-height: 0;
+  padding: env(safe-area-inset-top) 8px 0;
   background: rgba(248, 244, 236, 0.98);
   border: 0;
   border-bottom: 1px solid rgba(23, 20, 18, 0.12);
@@ -1353,8 +1354,13 @@ button {
 }
 
 .mode-brand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
   min-width: 0;
   max-width: 84px;
+  height: var(--mode-tabs-height);
+  padding: 0 6px;
   font-size: 0.9rem;
   font-weight: 700;
   color: var(--ink);
@@ -1364,9 +1370,13 @@ button {
 }
 
 .mode-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   min-width: 0;
-  min-height: 32px;
+  min-height: 0;
+  height: var(--mode-tabs-height);
   padding: 0 4px;
   border: 0;
   border-radius: 0;
@@ -1389,9 +1399,13 @@ button {
 }
 
 .sync-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   min-width: 0;
-  min-height: 32px;
+  min-height: 0;
+  height: var(--mode-tabs-height);
   padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 0;
@@ -1418,7 +1432,7 @@ button {
 
 .reader-card {
   gap: 14px;
-  padding: 16px 16px 8px;
+  padding: 16px 16px 0;
 }
 
 .reader-card.has-note-strip {
@@ -1426,11 +1440,16 @@ button {
 }
 
 .reader-footer {
+  display: grid;
+  grid-template-rows: auto minmax(0, auto) auto;
   gap: 10px;
+  align-content: end;
+  max-height: none;
 }
 
 .action-row {
-  margin-top: auto;
+  margin-top: 0;
+  padding-bottom: 0;
   justify-content: flex-end;
 }
 
@@ -1458,11 +1477,12 @@ button {
 
 .bottom-nav {
   width: 100%;
-  min-height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
-  padding: 0 0 env(safe-area-inset-bottom);
+  padding: 0;
   background: rgba(248, 244, 236, 0.98);
   border: 0;
   border-top: 1px solid rgba(23, 20, 18, 0.12);
@@ -1474,7 +1494,11 @@ button {
 }
 
 .nav-item {
-  min-height: var(--bottom-nav-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  height: 100%;
   border: 0;
   border-right: 1px solid var(--line);
   border-radius: 0;
@@ -1517,7 +1541,7 @@ button {
 
   .mode-tabs {
     gap: 2px;
-    padding: calc(env(safe-area-inset-top) + 2px) 4px 2px;
+    padding: env(safe-area-inset-top) 4px 0;
   }
 
   .mode-brand {
@@ -1527,14 +1551,15 @@ button {
 
   .mode-tab,
   .sync-button {
-    min-height: 26px;
+    min-height: 0;
+    height: var(--mode-tabs-height);
     padding: 0 4px;
     font-size: 0.66rem;
   }
 
   .reader-card {
     gap: 10px;
-    padding: 12px 12px 4px;
+    padding: 12px 12px 0;
   }
 
   .action-button {
@@ -1542,8 +1567,17 @@ button {
   }
 
   .nav-item {
-    min-height: var(--bottom-nav-height);
+    min-height: 0;
     font-size: 0.82rem;
+  }
+
+  .thumb-strip {
+    display: none;
+  }
+
+  .media-stage {
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
   }
 }
 
@@ -1562,4 +1596,11 @@ button {
   .nav-item {
     font-size: 0.78rem;
   }
+}
+
+.action-button,
+.sync-button,
+.nav-item,
+.mode-tab {
+  touch-action: manipulation;
 }
