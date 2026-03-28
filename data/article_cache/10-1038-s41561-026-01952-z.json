@@ -1,0 +1,31 @@
+{
+  "id": "10-1038-s41561-026-01952-z",
+  "figures": [
+    {
+      "index": 1,
+      "title": "Figure 1",
+      "image_url": "https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41561-026-01952-z/MediaObjects/41561_2026_1952_Fig1_HTML.png?as=webp"
+    },
+    {
+      "index": 2,
+      "title": "Figure 2",
+      "image_url": "https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41561-026-01952-z/MediaObjects/41561_2026_1952_Fig2_HTML.png?as=webp"
+    },
+    {
+      "index": 3,
+      "title": "Figure 3",
+      "image_url": "https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41561-026-01952-z/MediaObjects/41561_2026_1952_Fig3_HTML.png?as=webp"
+    },
+    {
+      "index": 4,
+      "title": "Figure 4",
+      "image_url": "https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41561-026-01952-z/MediaObjects/41561_2026_1952_Fig4_HTML.png?as=webp"
+    },
+    {
+      "index": 5,
+      "title": "Figure 5",
+      "image_url": "https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41561-026-01952-z/MediaObjects/41561_2026_1952_Fig5_HTML.png?as=webp"
+    }
+  ],
+  "detail_hydrated_at": "2026-03-28T07:42:25.111761+00:00"
+}

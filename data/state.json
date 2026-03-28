@@ -1,0 +1,29 @@
+{
+  "articles": {
+    "10-1038-s41467-026-71217-1": {
+      "status": "viewed",
+      "saved_at": null,
+      "handled_at": "2026-03-28T07:34:19.530275+00:00"
+    },
+    "10-1038-s41467-026-71003-z": {
+      "status": "viewed",
+      "saved_at": null,
+      "handled_at": "2026-03-28T08:22:49.729837+00:00"
+    },
+    "10-1038-s41467-026-71162-z": {
+      "status": "viewed",
+      "saved_at": null,
+      "handled_at": "2026-03-28T08:22:50.496807+00:00"
+    },
+    "10-1038-s41467-026-70635-5": {
+      "status": "viewed",
+      "saved_at": null,
+      "handled_at": "2026-03-28T08:22:48.983371+00:00"
+    }
+  },
+  "saved_images": {},
+  "ui": {
+    "today_index": 0,
+    "queue_index": 0
+  }
+}
