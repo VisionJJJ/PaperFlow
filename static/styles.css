@@ -191,6 +191,7 @@ button {
 .image-panel {
   min-height: 0;
   height: 100%;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .metric-card,
@@ -813,11 +814,20 @@ button {
 
 .empty-state,
 .placeholder-card {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-height: 100%;
   padding: 28px;
 }
 
 .placeholder-card {
   min-height: 280px;
+}
+
+.reader-panel > .empty-state,
+.reader-panel > .placeholder-card {
+  height: 100%;
 }
 
 @media (max-width: 1024px) {
