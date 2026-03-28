@@ -17,6 +17,10 @@
   --reader-stage-height: 60vh;
   --reader-media-height: 340px;
   --reader-title-size: 2.3rem;
+  --reader-headline-max-height: 240px;
+  --reader-thumb-height: 68px;
+  --reader-footer-max-height: 240px;
+  --reader-detail-max-height: 220px;
 }
 
 * {
@@ -298,6 +302,8 @@ button {
   gap: 10px;
   padding-right: 0;
   min-height: 0;
+  max-height: var(--reader-headline-max-height);
+  overflow: hidden;
 }
 
 .issue-line,
@@ -460,6 +466,8 @@ button {
 }
 
 .thumb-strip {
+  min-height: var(--reader-thumb-height);
+  max-height: var(--reader-thumb-height);
   overflow-x: auto;
   padding-bottom: 2px;
 }
@@ -494,6 +502,7 @@ button {
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  max-height: var(--reader-footer-max-height);
 }
 
 .action-row {
@@ -563,7 +572,7 @@ button {
   display: none;
   padding: 18px 0 0;
   border-top: 1px solid var(--line);
-  max-height: min(32vh, 220px);
+  max-height: var(--reader-detail-max-height);
   overflow: auto;
 }
 
@@ -1111,7 +1120,6 @@ button {
 
   .detail-panel {
     padding-top: 12px;
-    max-height: min(26vh, 170px);
   }
 
   .detail-copy {
@@ -1207,82 +1215,6 @@ button {
 
   .nav-item {
     min-height: 40px;
-  }
-}
-
-@media (max-width: 820px) and (orientation: portrait) {
-  :root {
-    --mode-tabs-height: clamp(70px, 11svh, 86px);
-  }
-
-  .app-shell {
-    height: 100svh;
-    max-height: 100svh;
-    width: calc(100vw - 10px);
-    padding: max(8px, 1.2svh) 0 calc(max(8px, 1svh) + env(safe-area-inset-bottom));
-  }
-
-  .mode-tabs {
-    min-height: var(--mode-tabs-height);
-    align-content: center;
-  }
-
-  .mode-tab {
-    min-height: clamp(36px, 5.5svh, 42px);
-  }
-
-  .reader-card {
-    gap: max(8px, 1.1svh);
-    padding: max(10px, 1.4svh) max(10px, 3vw) max(4px, 0.6svh);
-  }
-
-  .headline-block {
-    max-height: 23svh;
-    overflow: hidden;
-  }
-
-  .card-title {
-    font-size: clamp(1.18rem, 5vw, 1.42rem);
-    -webkit-line-clamp: 2;
-  }
-
-  .media-stage {
-    min-height: 0;
-    height: 100%;
-  }
-
-  .hero-image {
-    min-height: 0;
-    height: 100%;
-  }
-
-  .thumb-strip {
-    min-height: clamp(46px, 7svh, 60px);
-  }
-
-  .thumbnail-button {
-    min-width: clamp(52px, 14vw, 68px);
-  }
-
-  .thumbnail-button img {
-    width: clamp(52px, 14vw, 68px);
-    height: clamp(36px, 9vw, 48px);
-  }
-
-  .reader-footer {
-    max-height: 26svh;
-  }
-
-  .detail-panel {
-    max-height: min(18svh, 140px);
-  }
-
-  .bottom-nav {
-    min-height: clamp(46px, 7svh, 56px);
-  }
-
-  .nav-item {
-    min-height: clamp(34px, 5.6svh, 42px);
   }
 }
 

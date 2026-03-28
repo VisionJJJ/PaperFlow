@@ -143,55 +143,36 @@ function refreshVisibleView() {
 }
 
 function updateReaderStageHeight() {
-  const visualViewport = window.visualViewport;
-  const viewportWidth = Math.max(
-    Math.round(visualViewport?.width || 0),
-    window.innerWidth || 0,
+  const activePanel =
+    state.screen === "my" ? refs.myStack : state.mode === "images" ? refs.imagePanel : refs.readerPanel;
+  const availableHeight = Math.max(320, activePanel?.clientHeight || 320);
+  const availableWidth = Math.max(
+    320,
+    activePanel?.clientWidth || 0,
+    refs.homeSection?.clientWidth || 0,
     document.documentElement.clientWidth || 0,
   );
-  const viewportHeight = Math.max(
-    Math.round(visualViewport?.height || 0),
-    window.innerHeight || 0,
-    document.documentElement.clientHeight || 0,
-  );
-  const isPortraitMobile = viewportWidth <= 820 && viewportHeight > viewportWidth;
-  const available =
-    state.screen === "my"
-      ? Math.max(320, refs.myStack?.clientHeight || 320)
-      : state.mode === "images"
-        ? Math.max(320, refs.imagePanel?.clientHeight || 320)
-        : Math.max(320, refs.readerPanel?.clientHeight || 320);
+  const isPhone = availableWidth <= 480;
+  const isCompact = availableWidth <= 720;
   let mediaRatio = 0.5;
   let mediaMax = 520;
   let titleFactor = 0.065;
   let titleMin = 30;
   let titleMax = 54;
 
-  if (isPortraitMobile && viewportWidth <= 480) {
-    mediaRatio = 0.38;
-    mediaMax = Math.min(220, Math.round(viewportHeight * 0.24));
-    titleFactor = 0.032;
-    titleMin = 17;
-    titleMax = 21;
-  } else if (isPortraitMobile && viewportWidth <= 720) {
-    mediaRatio = 0.4;
-    mediaMax = Math.min(260, Math.round(viewportHeight * 0.27));
-    titleFactor = 0.036;
-    titleMin = 18;
-    titleMax = 23;
-  } else if (viewportWidth <= 480) {
+  if (isPhone) {
     mediaRatio = 0.4;
     mediaMax = 220;
     titleFactor = 0.034;
     titleMin = 18;
     titleMax = 22;
-  } else if (viewportWidth <= 720) {
+  } else if (isCompact) {
     mediaRatio = 0.43;
     mediaMax = 280;
     titleFactor = 0.038;
     titleMin = 19;
     titleMax = 24;
-  } else if (viewportWidth <= 1024) {
+  } else if (availableWidth <= 1024) {
     mediaRatio = 0.48;
     mediaMax = 400;
     titleFactor = 0.053;
@@ -199,10 +180,19 @@ function updateReaderStageHeight() {
     titleMax = 38;
   }
 
-  const mediaHeight = Math.max(160, Math.min(Math.round(available * mediaRatio), mediaMax));
-  const titleSize = Math.max(titleMin, Math.min(Math.round(available * titleFactor), titleMax));
+  const mediaHeight = Math.max(160, Math.min(Math.round(availableHeight * mediaRatio), mediaMax));
+  const titleSize = Math.max(titleMin, Math.min(Math.round(availableHeight * titleFactor), titleMax));
+  const headlineMaxHeight = Math.max(84, Math.round(availableHeight * (isPhone ? 0.2 : isCompact ? 0.23 : 0.28)));
+  const thumbHeight = Math.max(42, Math.round(availableHeight * (isPhone ? 0.075 : isCompact ? 0.085 : 0.1)));
+  const footerMaxHeight = Math.max(108, Math.round(availableHeight * (isPhone ? 0.23 : isCompact ? 0.26 : 0.3)));
+  const detailMaxHeight = Math.max(108, Math.round(availableHeight * (isPhone ? 0.16 : isCompact ? 0.18 : 0.24)));
+
   document.documentElement.style.setProperty("--reader-media-height", `${mediaHeight}px`);
   document.documentElement.style.setProperty("--reader-title-size", `${titleSize}px`);
+  document.documentElement.style.setProperty("--reader-headline-max-height", `${headlineMaxHeight}px`);
+  document.documentElement.style.setProperty("--reader-thumb-height", `${thumbHeight}px`);
+  document.documentElement.style.setProperty("--reader-footer-max-height", `${footerMaxHeight}px`);
+  document.documentElement.style.setProperty("--reader-detail-max-height", `${detailMaxHeight}px`);
 }
 
 function primeImageMeta(url) {
