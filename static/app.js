@@ -132,20 +132,43 @@ function refreshVisibleView() {
 }
 
 function updateReaderStageHeight() {
+  const visualViewport = window.visualViewport;
+  const viewportWidth = Math.max(
+    Math.round(visualViewport?.width || 0),
+    window.innerWidth || 0,
+    document.documentElement.clientWidth || 0,
+  );
+  const viewportHeight = Math.max(
+    Math.round(visualViewport?.height || 0),
+    window.innerHeight || 0,
+    document.documentElement.clientHeight || 0,
+  );
+  const isPortraitMobile = viewportWidth <= 820 && viewportHeight > viewportWidth;
   const available =
     state.screen === "my"
       ? Math.max(320, refs.myStack?.clientHeight || 320)
       : state.mode === "images"
         ? Math.max(320, refs.imagePanel?.clientHeight || 320)
         : Math.max(320, refs.readerPanel?.clientHeight || 320);
-  const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement.clientWidth || 0);
   let mediaRatio = 0.5;
   let mediaMax = 520;
   let titleFactor = 0.065;
   let titleMin = 30;
   let titleMax = 54;
 
-  if (viewportWidth <= 480) {
+  if (isPortraitMobile && viewportWidth <= 480) {
+    mediaRatio = 0.38;
+    mediaMax = Math.min(220, Math.round(viewportHeight * 0.24));
+    titleFactor = 0.032;
+    titleMin = 17;
+    titleMax = 21;
+  } else if (isPortraitMobile && viewportWidth <= 720) {
+    mediaRatio = 0.4;
+    mediaMax = Math.min(260, Math.round(viewportHeight * 0.27));
+    titleFactor = 0.036;
+    titleMin = 18;
+    titleMax = 23;
+  } else if (viewportWidth <= 480) {
     mediaRatio = 0.4;
     mediaMax = 220;
     titleFactor = 0.034;

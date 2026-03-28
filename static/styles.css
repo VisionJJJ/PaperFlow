@@ -1187,6 +1187,95 @@ button {
   }
 }
 
+@media (max-width: 820px) and (orientation: portrait) {
+  :root {
+    --mode-tabs-height: clamp(58px, 8.5svh, 70px);
+  }
+
+  .app-shell {
+    height: 100svh;
+    max-height: 100svh;
+    width: calc(100vw - 10px);
+    padding: max(8px, 1.2svh) 0 calc(max(8px, 1svh) + env(safe-area-inset-bottom));
+  }
+
+  .topbar {
+    min-height: 12svh;
+    margin-bottom: max(8px, 1svh);
+  }
+
+  .topbar h1 {
+    font-size: clamp(1.3rem, 6.2vw, 1.64rem);
+    max-width: 8.8ch;
+  }
+
+  #syncButton {
+    min-height: clamp(34px, 5.5svh, 42px);
+  }
+
+  .mode-tabs {
+    min-height: var(--mode-tabs-height);
+  }
+
+  .mode-tab {
+    min-height: clamp(36px, 5.5svh, 42px);
+  }
+
+  .reader-card {
+    gap: max(8px, 1.1svh);
+    padding: max(10px, 1.4svh) max(10px, 3vw) max(4px, 0.6svh);
+  }
+
+  .headline-block {
+    max-height: 23svh;
+    overflow: hidden;
+  }
+
+  .card-title {
+    font-size: clamp(1.18rem, 5vw, 1.42rem);
+    -webkit-line-clamp: 2;
+  }
+
+  .media-stage {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .hero-image {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .thumb-strip {
+    min-height: clamp(46px, 7svh, 60px);
+  }
+
+  .thumbnail-button {
+    min-width: clamp(52px, 14vw, 68px);
+  }
+
+  .thumbnail-button img {
+    width: clamp(52px, 14vw, 68px);
+    height: clamp(36px, 9vw, 48px);
+  }
+
+  .reader-footer {
+    max-height: 26svh;
+  }
+
+  .detail-panel {
+    max-height: min(18svh, 140px);
+  }
+
+  .bottom-nav {
+    min-height: clamp(46px, 7svh, 56px);
+  }
+
+  .nav-item {
+    min-height: clamp(34px, 5.6svh, 42px);
+  }
+}
+
 @media (max-width: 480px) {
   :root {
     --mode-tabs-height: 62px;
