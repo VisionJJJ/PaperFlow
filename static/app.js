@@ -146,17 +146,17 @@ function updateReaderStageHeight() {
   let titleMax = 54;
 
   if (viewportWidth <= 480) {
-    mediaRatio = 0.44;
-    mediaMax = 260;
-    titleFactor = 0.04;
-    titleMin = 21;
-    titleMax = 26;
+    mediaRatio = 0.4;
+    mediaMax = 220;
+    titleFactor = 0.034;
+    titleMin = 18;
+    titleMax = 22;
   } else if (viewportWidth <= 720) {
-    mediaRatio = 0.46;
-    mediaMax = 320;
-    titleFactor = 0.046;
-    titleMin = 22;
-    titleMax = 30;
+    mediaRatio = 0.43;
+    mediaMax = 280;
+    titleFactor = 0.038;
+    titleMin = 19;
+    titleMax = 24;
   } else if (viewportWidth <= 1024) {
     mediaRatio = 0.48;
     mediaMax = 400;

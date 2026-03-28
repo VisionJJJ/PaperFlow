@@ -30,6 +30,8 @@ body {
   height: 100%;
   min-height: 100%;
   overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   font-family: var(--sans);
   color: var(--ink);
   background:
@@ -273,6 +275,8 @@ button {
 }
 
 .headline-block {
+  display: grid;
+  gap: 10px;
   padding-right: 0;
   min-height: 0;
 }
@@ -881,7 +885,7 @@ button {
 
 @media (max-width: 720px) {
   :root {
-    --mode-tabs-height: 76px;
+    --mode-tabs-height: 68px;
   }
 
   .app-shell {
@@ -890,22 +894,40 @@ button {
   }
 
   .topbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-    padding-top: 10px;
-    margin-bottom: 12px;
-    border-top-width: 6px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 6px 10px;
+    padding-top: 8px;
+    margin-bottom: 10px;
+    border-top-width: 5px;
+  }
+
+  .topbar-copy {
+    display: grid;
+    gap: 4px;
+    max-width: none;
   }
 
   .topbar h1 {
-    font-size: 1.95rem;
+    margin: 0;
+    max-width: 8ch;
+    font-size: 1.52rem;
+    line-height: 0.96;
+  }
+
+  #syncButton {
+    justify-self: end;
+    align-self: start;
+    white-space: nowrap;
+    padding: 8px 10px;
+    font-size: 0.8rem;
   }
 
   .eyebrow,
   .meta-line,
   .section-label {
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     letter-spacing: 0.12em;
   }
 
@@ -913,13 +935,15 @@ button {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
-    padding: 8px;
+    padding: 7px;
+    border-radius: 22px;
   }
 
   .mode-tab {
     width: 100%;
-    min-height: 48px;
-    padding: 0 8px;
+    min-height: 40px;
+    padding: 0 6px;
+    border-radius: 16px;
   }
 
   .layout,
@@ -948,11 +972,12 @@ button {
   .filter-pill,
   .close-button,
   .primary-button {
-    font-size: 0.88rem;
-    padding: 8px 10px;
+    font-size: 0.82rem;
+    padding: 7px 9px;
   }
 
   .status-line {
+    align-items: flex-start;
     font-size: 0.82rem;
     gap: 6px;
   }
@@ -963,22 +988,39 @@ button {
 
   .issue-line {
     gap: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
 
   .journal-pill,
   .keyword {
     padding: 5px 8px;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
   }
 
   .card-title {
+    display: -webkit-box;
+    margin-bottom: 0;
+    font-size: 1.48rem;
     margin-bottom: 12px;
     line-height: 1.02;
+    overflow: hidden;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
   }
 
   .media-stage {
     gap: 10px;
+  }
+
+  .headline-block {
+    gap: 8px;
+  }
+
+  .keyword-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
   }
 
   .hero-image {
@@ -1021,12 +1063,14 @@ button {
 
   .action-row {
     gap: 8px;
+    align-items: flex-end;
   }
 
   .action-pack {
     gap: 6px;
     padding: 6px;
     border-radius: 14px;
+    justify-content: flex-end;
   }
 
   .saved-note-controls {
@@ -1135,21 +1179,27 @@ button {
   .bottom-nav {
     width: 100%;
     gap: 8px;
-    padding: 8px;
+    padding: 7px;
   }
 
   .nav-item {
-    min-height: 46px;
+    min-height: 40px;
   }
 }
 
 @media (max-width: 480px) {
   :root {
-    --mode-tabs-height: 68px;
+    --mode-tabs-height: 62px;
   }
 
   .topbar h1 {
-    font-size: 1.68rem;
+    max-width: 8.5ch;
+    font-size: 1.34rem;
+  }
+
+  #syncButton {
+    padding: 7px 9px;
+    font-size: 0.76rem;
   }
 
   .ghost-button,
@@ -1161,12 +1211,12 @@ button {
   .filter-pill,
   .close-button,
   .primary-button {
-    font-size: 0.82rem;
-    padding: 8px 9px;
+    font-size: 0.78rem;
+    padding: 7px 8px;
   }
 
   .mode-tab {
-    min-height: 42px;
+    min-height: 36px;
   }
 
   .saved-image-grid,
@@ -1175,7 +1225,8 @@ button {
   }
 
   .card-title {
-    margin-bottom: 10px;
+    font-size: 1.28rem;
+    -webkit-line-clamp: 2;
   }
 
   .issue-line {
@@ -1188,8 +1239,8 @@ button {
 
   .journal-pill,
   .keyword {
-    font-size: 0.72rem;
-    padding: 4px 7px;
+    font-size: 0.68rem;
+    padding: 4px 6px;
   }
 
   .thumbnail-button {
@@ -1204,5 +1255,13 @@ button {
   .action-pack {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .bottom-nav {
+    padding: 6px;
+  }
+
+  .nav-item {
+    min-height: 36px;
   }
 }
