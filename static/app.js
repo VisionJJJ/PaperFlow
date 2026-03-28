@@ -138,8 +138,35 @@ function updateReaderStageHeight() {
       : state.mode === "images"
         ? Math.max(320, refs.imagePanel?.clientHeight || 320)
         : Math.max(320, refs.readerPanel?.clientHeight || 320);
-  const mediaHeight = Math.max(190, Math.min(Math.round(available * 0.5), 520));
-  const titleSize = Math.max(30, Math.min(Math.round(available * 0.065), 54));
+  const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement.clientWidth || 0);
+  let mediaRatio = 0.5;
+  let mediaMax = 520;
+  let titleFactor = 0.065;
+  let titleMin = 30;
+  let titleMax = 54;
+
+  if (viewportWidth <= 480) {
+    mediaRatio = 0.44;
+    mediaMax = 260;
+    titleFactor = 0.04;
+    titleMin = 21;
+    titleMax = 26;
+  } else if (viewportWidth <= 720) {
+    mediaRatio = 0.46;
+    mediaMax = 320;
+    titleFactor = 0.046;
+    titleMin = 22;
+    titleMax = 30;
+  } else if (viewportWidth <= 1024) {
+    mediaRatio = 0.48;
+    mediaMax = 400;
+    titleFactor = 0.053;
+    titleMin = 24;
+    titleMax = 38;
+  }
+
+  const mediaHeight = Math.max(160, Math.min(Math.round(available * mediaRatio), mediaMax));
+  const titleSize = Math.max(titleMin, Math.min(Math.round(available * titleFactor), titleMax));
   document.documentElement.style.setProperty("--reader-media-height", `${mediaHeight}px`);
   document.documentElement.style.setProperty("--reader-title-size", `${titleSize}px`);
 }
@@ -697,7 +724,7 @@ function renderImages() {
       <div class="filter-row">${filters}</div>
       <button class="filter-pill ${state.images.savedOnly ? "active" : ""}" data-toggle-saved="true">只看已收藏</button>
     </div>
-    <div class="panel" style="padding:18px">
+    <div class="panel image-gallery-panel">
       <div class="image-masonry">
         ${
           state.images.items
@@ -706,7 +733,7 @@ function renderImages() {
               return `
                 <article class="image-tile" data-image-key="${escapeHtml(item.key)}">
                   <div class="image-tile-media" style="aspect-ratio:${getAspectRatio(meta)}">
-                    <img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.title)}" loading="lazy" style="width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;" />
+                    <img class="contained-image" src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.title)}" loading="lazy" />
                   </div>
                   <div class="image-tile-copy">
                     <div class="meta-line">${escapeHtml(item.journal_title || "Nature")} · ${escapeHtml(formatDate(item.published_at))}</div>
@@ -823,7 +850,7 @@ async function renderMyPage() {
           return `
             <article class="saved-image-card" data-saved-image="${escapeHtml(item.key)}">
               <div class="image-tile-media" style="aspect-ratio:${getAspectRatio(meta)}">
-                <img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.article_title || "")}" loading="lazy" style="width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;" />
+                <img class="contained-image" src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.article_title || "")}" loading="lazy" />
               </div>
             </article>
           `;

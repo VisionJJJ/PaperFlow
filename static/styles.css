@@ -75,6 +75,7 @@ button {
 
 .topbar-copy {
   max-width: 760px;
+  min-width: 0;
 }
 
 .eyebrow,
@@ -119,11 +120,16 @@ button {
 .thumbnail-button,
 .filter-pill,
 .close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.52);
   color: var(--ink);
   border-radius: 999px;
   padding: 10px 14px;
+  line-height: 1.1;
+  min-width: 0;
   transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
 }
 
@@ -221,6 +227,12 @@ button {
   height: var(--mode-tabs-height);
   padding: 12px;
   overflow: hidden;
+}
+
+.mode-tab,
+.nav-item,
+.segmented-tab {
+  text-align: center;
 }
 
 .mode-tab.active,
@@ -464,6 +476,7 @@ button {
 .action-row {
   order: 3;
   margin-top: auto;
+  row-gap: 8px;
   justify-content: flex-end;
 }
 
@@ -474,6 +487,7 @@ button {
   padding: 8px;
   border-radius: 18px;
   background: rgba(23, 20, 18, 0.05);
+  max-width: 100%;
 }
 
 .action-button.primary {
@@ -660,7 +674,24 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  align-items: center;
   padding: 18px;
+}
+
+.filter-row {
+  min-width: 0;
+}
+
+.image-gallery-panel {
+  padding: 18px;
+}
+
+.image-load-more {
+  margin-top: 12px;
+}
+
+#loadMoreImages {
+  margin-top: 12px;
 }
 
 .image-panel > .panel:last-child {
@@ -693,6 +724,14 @@ button {
 
 .image-tile-copy {
   padding: 12px;
+}
+
+.contained-image {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
 }
 
 .saved-dot {
@@ -759,44 +798,296 @@ button {
   min-height: 280px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1024px) {
+  :root {
+    --mode-tabs-height: 92px;
+  }
+
   .app-shell {
-    width: calc(100vw - 18px);
+    width: calc(100vw - 22px);
+    padding: 16px 0 calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .topbar {
+    gap: 14px;
     padding-top: 14px;
+    margin-bottom: 16px;
+  }
+
+  .topbar h1 {
+    font-size: 2.45rem;
+  }
+
+  .reader-card {
+    gap: 14px;
+    padding: 18px 18px 8px;
+  }
+
+  .my-panel {
+    padding: 14px 14px 10px;
+  }
+
+  .mode-tabs {
+    padding: 10px;
+  }
+
+  .ghost-button,
+  .mode-tab,
+  .nav-item,
+  .segmented-tab,
+  .action-button,
+  .thumbnail-button,
+  .filter-pill,
+  .close-button,
+  .primary-button {
+    font-size: 0.95rem;
+    padding: 9px 12px;
+  }
+
+  .hero-image {
+    padding: 10px;
+    border-radius: 24px;
+  }
+
+  .image-stage-fixed,
+  .image-stage-shell {
+    border-radius: 24px;
+  }
+
+  .image-frame {
+    border-radius: 18px;
+  }
+
+  .thumbnail-button {
+    min-width: 80px;
+  }
+
+  .thumbnail-button img {
+    width: 80px;
+    height: 58px;
+  }
+
+  .image-toolbar,
+  .image-gallery-panel {
+    padding: 14px;
+  }
+
+  .bottom-nav {
+    width: min(420px, calc(100vw - 24px));
+    gap: 8px;
+    padding: 8px;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --mode-tabs-height: 76px;
+  }
+
+  .app-shell {
+    width: calc(100vw - 12px);
+    padding: 12px 0 calc(10px + env(safe-area-inset-bottom));
   }
 
   .topbar {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+    padding-top: 10px;
+    margin-bottom: 12px;
+    border-top-width: 6px;
   }
 
   .topbar h1 {
-    font-size: 2.8rem;
+    font-size: 1.95rem;
   }
 
-  .reader-card,
-  .my-panel {
-    padding: 16px 16px 8px;
+  .eyebrow,
+  .meta-line,
+  .section-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
   }
 
   .mode-tabs {
-    height: 96px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .mode-tab {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 8px;
+  }
+
+  .layout,
+  .screen,
+  .reader-panel,
+  .image-panel,
+  .stack-list {
+    gap: 12px;
+  }
+
+  .reader-card {
+    gap: 12px;
+    padding: 14px 14px 6px;
+  }
+
+  .my-panel {
+    padding: 12px 12px 8px;
+  }
+
+  .ghost-button,
+  .mode-tab,
+  .nav-item,
+  .segmented-tab,
+  .action-button,
+  .thumbnail-button,
+  .filter-pill,
+  .close-button,
+  .primary-button {
+    font-size: 0.88rem;
+    padding: 8px 10px;
+  }
+
+  .status-line {
+    font-size: 0.82rem;
+    gap: 6px;
+  }
+
+  .progress-bar {
+    height: 8px;
+  }
+
+  .issue-line {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .journal-pill,
+  .keyword {
+    padding: 5px 8px;
+    font-size: 0.75rem;
   }
 
   .card-title {
-    font-size: 2.2rem;
+    margin-bottom: 12px;
+    line-height: 1.02;
+  }
+
+  .media-stage {
+    gap: 10px;
   }
 
   .hero-image {
     min-height: 0;
+    padding: 8px;
+    border-radius: 20px;
   }
 
   .image-stage-fixed {
     height: 100%;
+    border-radius: 20px;
+  }
+
+  .image-stage-shell {
+    border-radius: 20px;
+  }
+
+  .image-frame {
+    border-radius: 16px;
+  }
+
+  .thumb-strip {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .thumbnail-button {
+    min-width: 64px;
+    border-radius: 14px;
+  }
+
+  .thumbnail-button img {
+    width: 64px;
+    height: 46px;
+  }
+
+  .reader-footer {
+    gap: 10px;
+  }
+
+  .action-row {
+    gap: 8px;
+  }
+
+  .action-pack {
+    gap: 6px;
+    padding: 6px;
+    border-radius: 14px;
   }
 
   .saved-note-controls {
     grid-template-columns: 1fr;
+  }
+
+  .saved-note-strip {
+    padding: 10px 12px;
+  }
+
+  .saved-note-controls textarea {
+    min-height: 48px;
+    max-height: 52px;
+  }
+
+  .detail-panel {
+    padding-top: 12px;
+    max-height: min(26vh, 170px);
+  }
+
+  .detail-copy {
+    font-size: 0.9rem;
+    line-height: 1.45;
+  }
+
+  .my-stack {
+    gap: 10px;
+    grid-template-rows: minmax(0, 2.2fr) minmax(0, 1fr);
+  }
+
+  .my-panel-head,
+  .my-search-row {
+    margin-bottom: 8px;
+  }
+
+  .section-head {
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .segmented-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    gap: 6px;
+    padding: 5px;
+  }
+
+  .segmented-tab {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .saved-paper h3,
+  .subscription-item h3 {
+    font-size: 1rem;
+  }
+
+  .saved-paper-actions,
+  .subscription-actions {
+    gap: 6px;
   }
 
   .saved-image-grid,
@@ -804,18 +1095,114 @@ button {
     grid-template-columns: 1fr 1fr;
   }
 
+  .image-toolbar,
+  .image-gallery-panel {
+    padding: 12px;
+  }
+
+  .filter-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .filter-pill {
+    white-space: nowrap;
+  }
+
+  .image-tile-copy {
+    padding: 10px;
+  }
+
   .image-masonry {
     columns: 1;
+  }
+
+  .image-modal-card {
+    width: calc(100vw - 14px);
+    max-height: calc(100dvh - 14px);
+    margin: 7px auto;
+    padding: 12px;
+    border-radius: 20px;
+  }
+
+  .modal-image {
+    margin: 10px 0;
+    border-radius: 16px;
+  }
+
+  .bottom-nav {
+    width: 100%;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .nav-item {
+    min-height: 46px;
   }
 }
 
 @media (max-width: 480px) {
+  :root {
+    --mode-tabs-height: 68px;
+  }
+
+  .topbar h1 {
+    font-size: 1.68rem;
+  }
+
+  .ghost-button,
+  .mode-tab,
+  .nav-item,
+  .segmented-tab,
+  .action-button,
+  .thumbnail-button,
+  .filter-pill,
+  .close-button,
+  .primary-button {
+    font-size: 0.82rem;
+    padding: 8px 9px;
+  }
+
+  .mode-tab {
+    min-height: 42px;
+  }
+
   .saved-image-grid,
   .stats-grid {
     grid-template-columns: 1fr;
   }
 
   .card-title {
-    font-size: 1.9rem;
+    margin-bottom: 10px;
+  }
+
+  .issue-line {
+    margin-bottom: 8px;
+  }
+
+  .keyword-row {
+    gap: 6px;
+  }
+
+  .journal-pill,
+  .keyword {
+    font-size: 0.72rem;
+    padding: 4px 7px;
+  }
+
+  .thumbnail-button {
+    min-width: 56px;
+  }
+
+  .thumbnail-button img {
+    width: 56px;
+    height: 40px;
+  }
+
+  .action-pack {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
