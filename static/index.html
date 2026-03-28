@@ -22,59 +22,60 @@
           <section id="imagePanel" class="image-panel hidden"></section>
         </section>
 
-        <section id="mySection" class="screen hidden">
-          <div class="my-stack">
-            <section class="panel my-panel my-panel-primary">
-              <div class="section-head my-panel-head">
-                <h2 id="collectionTitle">收藏论文</h2>
-                <div class="segmented-tabs">
-                  <button class="segmented-tab active" data-collection-tab="papers">论文</button>
-                  <button class="segmented-tab" data-collection-tab="images">图片</button>
-                </div>
+        <section id="collectionSection" class="screen hidden">
+          <section class="panel my-panel page-panel">
+            <div class="section-head my-panel-head">
+              <h2 id="collectionTitle">收藏论文</h2>
+              <div class="segmented-tabs">
+                <button class="segmented-tab active" data-collection-tab="papers">论文</button>
+                <button class="segmented-tab" data-collection-tab="images">图片</button>
               </div>
-              <div class="my-search-row">
-                <input id="paperSearch" type="search" placeholder="搜索标题 / 期刊 / 备注" />
-              </div>
-              <div class="my-panel-body">
-                <div id="savedPapers" class="stack-list"></div>
-                <div id="savedImages" class="saved-image-grid hidden"></div>
-              </div>
-            </section>
+            </div>
+            <div class="my-search-row">
+              <input id="paperSearch" type="search" placeholder="搜索标题 / 期刊 / 备注" />
+            </div>
+            <div class="my-panel-body">
+              <div id="savedPapers" class="stack-list"></div>
+              <div id="savedImages" class="saved-image-grid hidden"></div>
+            </div>
+          </section>
+        </section>
 
-            <section class="panel my-panel my-panel-secondary">
-              <div class="section-head my-panel-head">
-                <h2 id="manageTitle">订阅管理</h2>
-                <div class="segmented-tabs">
-                  <button class="segmented-tab active" data-manage-tab="subscriptions">订阅</button>
-                  <button class="segmented-tab" data-manage-tab="stats">统计</button>
+        <section id="subscriptionSection" class="screen hidden">
+          <section class="panel my-panel page-panel">
+            <div class="section-head my-panel-head">
+              <h2 id="manageTitle">订阅管理</h2>
+              <div class="segmented-tabs">
+                <button class="segmented-tab active" data-manage-tab="subscriptions">订阅</button>
+                <button class="segmented-tab" data-manage-tab="stats">统计</button>
+              </div>
+            </div>
+            <div class="my-panel-body">
+              <div id="manageSubscriptions">
+                <form id="subscriptionForm" class="subscription-form">
+                  <input id="subscriptionName" type="text" placeholder="期刊名称" />
+                  <input id="subscriptionUrl" type="url" placeholder="RSS URL" />
+                  <button type="submit" class="primary-button">添加订阅</button>
+                </form>
+                <div id="subscriptionList" class="stack-list"></div>
+              </div>
+              <div id="manageStats" class="hidden">
+                <div id="statsPanel" class="stats-grid"></div>
+                <div class="settings-card">
+                  <h3>设置</h3>
+                  <p>当前为演示模式：默认游客可直接浏览，收藏和状态写入本地 JSON。</p>
+                  <p>后续可继续接登录、回收站、专栏 / 图集分类和后台规则维护。</p>
                 </div>
               </div>
-              <div class="my-panel-body">
-                <div id="manageSubscriptions">
-                  <form id="subscriptionForm" class="subscription-form">
-                    <input id="subscriptionName" type="text" placeholder="期刊名称" />
-                    <input id="subscriptionUrl" type="url" placeholder="RSS URL" />
-                    <button type="submit" class="primary-button">添加订阅</button>
-                  </form>
-                  <div id="subscriptionList" class="stack-list"></div>
-                </div>
-                <div id="manageStats" class="hidden">
-                  <div id="statsPanel" class="stats-grid"></div>
-                  <div class="settings-card">
-                    <h3>设置</h3>
-                    <p>当前为演示模式：默认游客可直接浏览，收藏和状态写入本地 JSON。</p>
-                    <p>后续可继续接登录、回收站、专栏 / 图集分类和后台规则维护。</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
+            </div>
+          </section>
         </section>
       </main>
 
       <nav id="bottomNav" class="bottom-nav">
         <button class="nav-item active" data-screen="home">首页</button>
-        <button class="nav-item" data-screen="my">我的</button>
+        <button class="nav-item" data-screen="collection">收藏</button>
+        <button class="nav-item" data-screen="subscriptions">订阅</button>
       </nav>
     </div>
 

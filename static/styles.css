@@ -1321,48 +1321,58 @@ button {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-#mySection {
+#collectionSection,
+#subscriptionSection {
   padding: 12px 12px 0;
 }
 
-.reader-panel,
+.reader-panel {
+  padding: 0;
+  gap: 0;
+}
+
 .image-panel {
   padding: 12px 12px 0;
 }
 
 .mode-tabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr)) auto;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   width: 100%;
   min-height: calc(var(--mode-tabs-height) + env(safe-area-inset-top));
-  padding: calc(env(safe-area-inset-top) + 6px) 10px 6px;
+  padding: calc(env(safe-area-inset-top) + 4px) 8px 4px;
   background: rgba(248, 244, 236, 0.98);
   border: 0;
   border-bottom: 1px solid rgba(23, 20, 18, 0.12);
   border-radius: 0;
   box-shadow: none;
   backdrop-filter: blur(10px);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .mode-brand {
-  flex: 0 0 auto;
-  font-size: 0.98rem;
+  min-width: 0;
+  max-width: 84px;
+  font-size: 0.9rem;
   font-weight: 700;
   color: var(--ink);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mode-tab {
-  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0 4px;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--ink);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -1379,14 +1389,15 @@ button {
 }
 
 .sync-button {
-  flex: 0 0 auto;
-  margin-left: auto;
+  width: 100%;
+  min-width: 0;
   min-height: 32px;
-  padding: 0 12px;
+  padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 0;
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
+  font-size: 0.78rem;
   line-height: 1;
   white-space: nowrap;
 }
@@ -1396,9 +1407,22 @@ button {
   background: rgba(255, 255, 255, 0.92);
 }
 
+.reader-panel > .reader-card,
+.reader-panel > .empty-state,
+.reader-panel > .placeholder-card {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  box-shadow: none;
+}
+
 .reader-card {
   gap: 14px;
   padding: 16px 16px 8px;
+}
+
+.reader-card.has-note-strip {
+  transform: none;
 }
 
 .reader-footer {
@@ -1436,7 +1460,7 @@ button {
   width: 100%;
   min-height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   padding: 0 0 env(safe-area-inset-bottom);
   background: rgba(248, 244, 236, 0.98);
@@ -1460,6 +1484,10 @@ button {
   font-weight: 500;
 }
 
+.page-panel {
+  height: 100%;
+}
+
 .nav-item:last-child {
   border-right: 0;
 }
@@ -1481,31 +1509,32 @@ button {
     --bottom-nav-height: 38px;
   }
 
-  #mySection,
-  .reader-panel,
+  #collectionSection,
+  #subscriptionSection,
   .image-panel {
     padding: 10px 10px 0;
   }
 
   .mode-tabs {
-    gap: 4px;
-    padding: calc(env(safe-area-inset-top) + 4px) 6px 4px;
+    gap: 2px;
+    padding: calc(env(safe-area-inset-top) + 2px) 4px 2px;
   }
 
   .mode-brand {
-    font-size: 0.84rem;
+    max-width: 68px;
+    font-size: 0.72rem;
   }
 
   .mode-tab,
   .sync-button {
-    min-height: 28px;
-    padding: 0 8px;
-    font-size: 0.76rem;
+    min-height: 26px;
+    padding: 0 4px;
+    font-size: 0.66rem;
   }
 
   .reader-card {
     gap: 10px;
-    padding: 14px 12px 6px;
+    padding: 12px 12px 4px;
   }
 
   .action-button {
@@ -1520,13 +1549,14 @@ button {
 
 @media (max-width: 480px) {
   .mode-brand {
-    font-size: 0.8rem;
+    max-width: 62px;
+    font-size: 0.68rem;
   }
 
   .mode-tab,
   .sync-button {
-    font-size: 0.72rem;
-    padding: 0 6px;
+    font-size: 0.62rem;
+    padding: 0 3px;
   }
 
   .nav-item {

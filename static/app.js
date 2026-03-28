@@ -25,8 +25,8 @@ const refs = {
   modeTabs: document.getElementById("modeTabs"),
   bottomNav: document.getElementById("bottomNav"),
   homeSection: document.getElementById("homeSection"),
-  mySection: document.getElementById("mySection"),
-  myStack: document.querySelector(".my-stack"),
+  collectionSection: document.getElementById("collectionSection"),
+  subscriptionSection: document.getElementById("subscriptionSection"),
   readerPanel: document.getElementById("readerPanel"),
   imagePanel: document.getElementById("imagePanel"),
   savedPapers: document.getElementById("savedPapers"),
@@ -1141,6 +1141,141 @@ renderReader = function renderReaderUpdated() {
   applyReaderImageFitting();
   attachReaderEvents();
   maybePrefetchNext();
+};
+
+updateReaderStageHeight = function updateReaderStageHeightUpdated() {
+  const activePanel =
+    state.screen === "collection"
+      ? refs.collectionSection
+      : state.screen === "subscriptions"
+        ? refs.subscriptionSection
+        : state.mode === "images"
+          ? refs.imagePanel
+          : refs.readerPanel;
+  const availableHeight = Math.max(320, activePanel?.clientHeight || 320);
+  const availableWidth = Math.max(
+    320,
+    activePanel?.clientWidth || 0,
+    refs.homeSection?.clientWidth || 0,
+    document.documentElement.clientWidth || 0,
+  );
+  const isPhone = availableWidth <= 480;
+  const isCompact = availableWidth <= 720;
+  let mediaRatio = 0.5;
+  let mediaMax = 520;
+  let titleFactor = 0.065;
+  let titleMin = 30;
+  let titleMax = 54;
+  let headlineRatio = 0.26;
+  let thumbHeight = 68;
+  let footerRatio = 0.25;
+  let footerMin = 148;
+  let detailRatio = 0.28;
+
+  if (isCompact) {
+    mediaRatio = 0.42;
+    mediaMax = 340;
+    titleFactor = 0.052;
+    titleMin = 22;
+    titleMax = 36;
+    headlineRatio = 0.22;
+    thumbHeight = 54;
+    footerRatio = 0.22;
+    footerMin = 124;
+    detailRatio = 0.22;
+  }
+
+  if (isPhone) {
+    mediaRatio = 0.38;
+    mediaMax = 280;
+    titleFactor = 0.046;
+    titleMin = 18;
+    titleMax = 28;
+    headlineRatio = 0.18;
+    thumbHeight = 46;
+    footerRatio = 0.18;
+    footerMin = 102;
+    detailRatio = 0.18;
+  }
+
+  const mediaHeight = Math.max(180, Math.min(mediaMax, availableHeight * mediaRatio));
+  const titleSize = Math.max(titleMin, Math.min(titleMax, availableHeight * titleFactor));
+  const headlineMaxHeight = Math.max(108, availableHeight * headlineRatio);
+  const footerMaxHeight = Math.max(footerMin, availableHeight * footerRatio);
+  const detailMaxHeight = Math.max(88, availableHeight * detailRatio);
+
+  document.documentElement.style.setProperty("--reader-stage-height", `${availableHeight}px`);
+  document.documentElement.style.setProperty("--reader-media-height", `${mediaHeight}px`);
+  document.documentElement.style.setProperty("--reader-title-size", `${titleSize}px`);
+  document.documentElement.style.setProperty("--reader-headline-max-height", `${headlineMaxHeight}px`);
+  document.documentElement.style.setProperty("--reader-thumb-height", `${thumbHeight}px`);
+  document.documentElement.style.setProperty("--reader-footer-max-height", `${footerMaxHeight}px`);
+  document.documentElement.style.setProperty("--reader-detail-max-height", `${detailMaxHeight}px`);
+};
+
+attachGlobalEvents = function attachGlobalEventsUpdated() {
+  refs.syncButtons.forEach((button) => {
+    button.addEventListener("click", syncFeeds);
+  });
+
+  document.querySelectorAll(".mode-tab").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await switchMode(button.dataset.mode);
+    });
+  });
+
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.screen = button.dataset.screen;
+      document.querySelectorAll(".nav-item").forEach((item) => {
+        item.classList.toggle("active", item === button);
+      });
+      refs.homeSection.classList.toggle("hidden", state.screen !== "home");
+      refs.collectionSection.classList.toggle("hidden", state.screen !== "collection");
+      refs.subscriptionSection.classList.toggle("hidden", state.screen !== "subscriptions");
+      updateReaderStageHeight();
+      if (state.screen !== "home") await renderMyPage();
+    });
+  });
+
+  document.getElementById("subscriptionForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = document.getElementById("subscriptionName").value.trim();
+    const url = document.getElementById("subscriptionUrl").value.trim();
+    if (!name || !url) return;
+    await api("/api/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ name, url }),
+    });
+    event.target.reset();
+    await loadBootstrap();
+    await switchMode(state.mode);
+  });
+
+  refs.paperSearch.addEventListener("input", () => {
+    renderMyPage();
+  });
+
+  document.querySelectorAll("[data-collection-tab]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.my.collectionTab = button.dataset.collectionTab;
+      await renderMyPage();
+    });
+  });
+
+  document.querySelectorAll("[data-manage-tab]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.my.manageTab = button.dataset.manageTab;
+      await renderMyPage();
+    });
+  });
+
+  document.getElementById("closeModal").addEventListener("click", closeModal);
+  refs.imageModal.addEventListener("click", (event) => {
+    if (event.target.dataset.closeModal) {
+      closeModal();
+    }
+  });
 };
 
 function attachGlobalEvents() {
