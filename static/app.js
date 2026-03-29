@@ -197,6 +197,44 @@ function figureKey(articleId, figureIndex) {
   return `${articleId}:${figureIndex}`;
 }
 
+function normalizeFigureIndex(value, fallback = 0) {
+  const parsed = Number(value);
+  if (Number.isInteger(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  return fallback;
+}
+
+function parseFigureKey(value) {
+  if (!value) return null;
+  const text = String(value);
+  const separator = text.lastIndexOf(":");
+  if (separator < 1) return null;
+  const articleId = text.slice(0, separator);
+  const figureIndex = normalizeFigureIndex(text.slice(separator + 1), -1);
+  if (!articleId || figureIndex < 0) return null;
+  return { articleId, figureIndex, key: `${articleId}:${figureIndex}` };
+}
+
+function normalizeImageItem(rawItem) {
+  if (!rawItem) return null;
+  const fromKey = parseFigureKey(rawItem.key);
+  const articleId = String(rawItem.article_id ?? rawItem.articleId ?? fromKey?.articleId ?? "").trim();
+  const figureIndex = normalizeFigureIndex(
+    rawItem.figure_index ?? rawItem.figureIndex ?? fromKey?.figureIndex ?? 0,
+    fromKey?.figureIndex ?? 0,
+  );
+  const imageUrl = String(rawItem.image_url ?? rawItem.imageUrl ?? "").trim();
+  if (!articleId || !imageUrl) return null;
+  return {
+    ...rawItem,
+    article_id: articleId,
+    figure_index: figureIndex,
+    image_url: imageUrl,
+    key: rawItem.key || figureKey(articleId, figureIndex),
+  };
+}
+
 function isFigureSaved(articleId, figureIndex) {
   return state.savedImageKeys.has(figureKey(articleId, figureIndex));
 }
@@ -1099,15 +1137,20 @@ function renderImages() {
 }
 
 async function toggleImageSave(item) {
+  const normalized = normalizeImageItem(item);
+  if (!normalized) {
+    return;
+  }
   await api("/api/images/toggle", {
     method: "POST",
     body: JSON.stringify({
-      articleId: item.article_id,
-      figureIndex: item.figure_index,
-      imageUrl: item.image_url,
+      articleId: normalized.article_id,
+      figureIndex: normalized.figure_index,
+      imageUrl: normalized.image_url,
+      imageKey: normalized.key,
     }),
   });
-  const key = item.key || figureKey(item.article_id, item.figure_index);
+  const key = normalized.key;
   const nextSaved = !state.savedImageKeys.has(key);
   if (nextSaved) {
     state.savedImageKeys.add(key);
@@ -1115,6 +1158,10 @@ async function toggleImageSave(item) {
     state.savedImageKeys.delete(key);
   }
   item.saved = nextSaved;
+  item.article_id = normalized.article_id;
+  item.figure_index = normalized.figure_index;
+  item.image_url = normalized.image_url;
+  item.key = normalized.key;
   state.images.items.forEach((entry) => {
     if (entry.key === key) {
       entry.saved = nextSaved;

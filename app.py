@@ -21,6 +21,18 @@ from backend.service import (
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 
+def safe_int(value, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        text = str(value).strip()
+        if not text or text.lower() in {"undefined", "null", "nan"}:
+            return default
+        return int(float(text))
+    except (TypeError, ValueError):
+        return default
+
+
 @app.after_request
 def disable_cache(response):
     if request.path == "/" or request.path.startswith("/static/"):
@@ -84,7 +96,7 @@ def image_feed():
 def image_toggle():
     payload = request.get_json(silent=True) or {}
     article_id = str(payload.get("articleId", "")).strip()
-    figure_index = int(payload.get("figureIndex", 0))
+    figure_index = safe_int(payload.get("figureIndex", 0), 0)
     image_url = str(payload.get("imageUrl", "")).strip()
     return jsonify(toggle_saved_image(article_id, figure_index, image_url))
 
