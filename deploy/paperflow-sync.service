@@ -5,5 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=paperflow
+Group=paperflow
 WorkingDirectory=/opt/paperflow
-ExecStart=/opt/paperflow/venv/bin/python /opt/paperflow/sync_archive.py --backfill-missing --backfill-limit 6
+ExecStart=/opt/paperflow/.venv/bin/python /opt/paperflow/sync_archive.py --backfill-missing --backfill-limit 6
