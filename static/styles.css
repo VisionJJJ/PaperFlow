@@ -443,6 +443,13 @@ a {
 .note-strip textarea {
   min-height: 42px;
   max-height: 52px;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.note-strip textarea::placeholder {
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 .detail-section {
@@ -919,6 +926,11 @@ a {
     min-height: 38px;
     max-height: 44px;
     padding: 7px 9px;
+    font-size: 0.68rem;
+  }
+
+  .note-strip textarea::placeholder {
+    font-size: 0.68rem;
   }
 
   .note-actions .secondary-button {
