@@ -376,7 +376,7 @@ function renderReader() {
   const flow = readerFlowProgress(feed);
 
   refs.readerPanel.innerHTML = `
-    <article class="reader-card" id="readerCard">
+    <article class="reader-card ${feed.expanded ? "detail-open" : ""}" id="readerCard">
       <div class="reader-flow">
         <span class="reader-flow-label">${state.mode === "today" ? "今日新增" : "待阅读"}</span>
         <div class="reader-progressbar flow-progressbar"><span style="width:${flow.percent}%"></span></div>
