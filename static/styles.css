@@ -413,6 +413,12 @@ a {
 .page-head h1 {
   margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", Baskerville, serif;
+  line-height: 1.12;
+}
+
+.page-head h1,
+.my-page h1 {
+  font-size: clamp(1.02rem, 3.8vw, 1.24rem);
 }
 
 .empty-card p,
@@ -424,6 +430,7 @@ a {
   margin: 0;
   color: var(--muted);
   line-height: 1.55;
+  font-size: 0.76rem;
 }
 
 .empty-actions,
@@ -455,6 +462,7 @@ a {
   padding: 8px 10px;
   background: rgba(255, 255, 255, 0.9);
   resize: none;
+  font-size: 0.76rem;
 }
 
 .note-strip textarea {
@@ -518,6 +526,7 @@ a {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.86);
   color: var(--ink);
+  font-size: 0.74rem;
 }
 
 .primary-link,
@@ -665,14 +674,15 @@ a {
 
 .saved-paper-meta {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   letter-spacing: 0.04em;
 }
 
 .saved-paper-card h3,
 .hub-card h3 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 0.98rem;
+  line-height: 1.18;
 }
 
 .hub-link {
@@ -761,7 +771,12 @@ a {
 }
 
 .stats-card strong {
-  font-size: 1.5rem;
+  font-size: 1.16rem;
+}
+
+.stats-card span {
+  font-size: 0.74rem;
+  color: var(--muted);
 }
 
 .hub-card.muted {
@@ -858,6 +873,14 @@ a {
 .modal-meta,
 .modal-caption {
   color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.image-modal-card h3 {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Baskerville, serif;
+  font-size: 1rem;
+  line-height: 1.18;
 }
 
 .modal-image {
@@ -977,7 +1000,7 @@ a {
   .secondary-link {
     min-height: 36px;
     padding: 0 6px;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
   }
 
   .action-button {
@@ -996,5 +1019,35 @@ a {
     margin: 6px auto;
     padding: 10px;
     border-radius: 18px;
+  }
+
+  .page-head h1,
+  .my-page h1 {
+    font-size: 0.96rem;
+  }
+
+  .saved-paper-card h3,
+  .hub-card h3,
+  .image-modal-card h3 {
+    font-size: 0.9rem;
+  }
+
+  .saved-paper-card p,
+  .page-head p,
+  .hub-card p,
+  .stats-card span,
+  .modal-meta,
+  .modal-caption,
+  .search-row input,
+  .subscription-form input {
+    font-size: 0.68rem;
+  }
+
+  .saved-paper-meta {
+    font-size: 0.64rem;
+  }
+
+  .stats-card strong {
+    font-size: 1.04rem;
   }
 }
