@@ -4,7 +4,10 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python < 3.9
+    from backports.zoneinfo import ZoneInfo
 
 from .config import (
     ARTICLES_PATH,
