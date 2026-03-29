@@ -190,8 +190,8 @@ a {
 .reader-card {
   height: 100%;
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   padding: 10px 12px 6px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 251, 244, 0.98));
@@ -295,6 +295,7 @@ a {
 
 .reader-media {
   min-height: 0;
+  flex: 1 1 auto;
   display: block;
 }
 
@@ -516,7 +517,6 @@ a {
 }
 
 .reader-footer-shell {
-  margin-top: auto;
   padding-top: 8px;
   padding-bottom: 2px;
 }
@@ -820,7 +820,6 @@ a {
 
 @media (max-width: 720px) {
   .reader-card {
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto;
     gap: 7px;
     padding: 8px 10px 4px;
   }
@@ -880,7 +879,6 @@ a {
 
   .reader-card {
     padding: 8px 8px 3px;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto;
   }
 
   .reader-title {
