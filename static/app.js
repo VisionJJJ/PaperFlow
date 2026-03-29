@@ -59,6 +59,7 @@ function createFeedState() {
   return {
     ids: [],
     details: {},
+    detailLoading: {},
     offset: 0,
     total: 0,
     currentIndex: 0,
@@ -400,12 +401,36 @@ async function ensureFeedPage(mode) {
     if (page.ids.length) {
       const details = await api(`/api/article-details?ids=${page.ids.join(",")}`);
       details.items.forEach((item) => {
-        feed.details[item.id] = item;
+        feed.details[item.id] = { ...(feed.details[item.id] || {}), ...item };
         primeFigureSet(item.figures || []);
       });
+      void ensureArticleDetail(mode, page.ids[0]);
     }
   } finally {
     feed.loading = false;
+    if (state.screen === "home" && state.mode === mode) {
+      renderReader();
+    }
+  }
+}
+
+async function ensureArticleDetail(mode, articleId) {
+  if (!articleId) return;
+  const feed = state.feeds[mode];
+  if (feed.detailLoading[articleId]) return;
+  if (feed.details[articleId]?.detail_hydrated_at) return;
+  feed.detailLoading[articleId] = true;
+  if (state.screen === "home" && state.mode === mode) {
+    renderReader();
+  }
+  try {
+    const details = await api(`/api/article-details?ids=${articleId}`);
+    details.items.forEach((item) => {
+      feed.details[item.id] = { ...(feed.details[item.id] || {}), ...item };
+      primeFigureSet(item.figures || []);
+    });
+  } finally {
+    delete feed.detailLoading[articleId];
     if (state.screen === "home" && state.mode === mode) {
       renderReader();
     }
@@ -495,6 +520,10 @@ function renderReader() {
   }
 
   const figures = detail.figures || [];
+  const isDetailHydrating = !!feed.detailLoading[detail.id];
+  if (!detail.detail_hydrated_at && !isDetailHydrating) {
+    void ensureArticleDetail(state.mode, detail.id);
+  }
   const activeFigure = figures[feed.activeFigure] || null;
   const keywords = (detail.keywords || [])
     .map((keyword) => `<span class="keyword-pill">${escapeHtml(keyword)}</span>`)
@@ -595,6 +624,13 @@ function renderReader() {
       </footer>
     </article>
   `;
+
+  if (!activeFigure && (isDetailHydrating || !detail.detail_hydrated_at)) {
+    const mediaEmpty = refs.readerPanel.querySelector(".figure-empty");
+    if (mediaEmpty) {
+      mediaEmpty.innerHTML = "<p>正在加载插图...</p>";
+    }
+  }
 
   bindReaderEvents(figures);
   if (activeFigure?.image_url) {
@@ -1010,6 +1046,10 @@ async function maybePrefetchNext() {
   if (state.mode === "images") return;
   if (!feed.loading && feed.hasMore && feed.ids.length - feed.currentIndex <= 4) {
     await ensureFeedPage(state.mode);
+  }
+  const nextId = feed.ids[feed.currentIndex + 1];
+  if (nextId) {
+    void ensureArticleDetail(state.mode, nextId);
   }
 }
 

@@ -230,7 +230,7 @@ def sync_subscriptions(single_url: str | None = None) -> dict[str, Any]:
         return {"created": created, "updated": updated, "count": len(ordered), "synced_at": now_iso}
 
 
-def hydrate_article_details(article_id: str, state: dict[str, Any]) -> dict[str, Any] | None:
+def hydrate_article_details(article_id: str, state: dict[str, Any], hydrate_missing: bool = True) -> dict[str, Any] | None:
     articles = load_articles()
     article_map = {item["id"]: item for item in articles}
     article = article_map.get(article_id)
@@ -239,7 +239,7 @@ def hydrate_article_details(article_id: str, state: dict[str, Any]) -> dict[str,
 
     cache_path = article_cache_path(article_id)
     detail = read_json(cache_path, {})
-    if not detail or not detail.get("detail_hydrated_at"):
+    if hydrate_missing and (not detail or not detail.get("detail_hydrated_at")):
         figures = discover_figure_urls(article["doi"])
         detail = {"id": article_id, "figures": figures, "detail_hydrated_at": utc_now_iso()}
         write_json(cache_path, detail)
@@ -278,8 +278,8 @@ def get_feed(mode: str, offset: int = 0, limit: int = DEFAULT_BATCH_SIZE) -> dic
 def get_article_details(article_ids: list[str]) -> list[dict[str, Any]]:
     state = load_state()
     details = []
-    for article_id in article_ids[:MAX_BATCH_SIZE]:
-        detail = hydrate_article_details(article_id, state)
+    for index, article_id in enumerate(article_ids[:MAX_BATCH_SIZE]):
+        detail = hydrate_article_details(article_id, state, hydrate_missing=index == 0)
         if detail:
             details.append(detail)
     return details

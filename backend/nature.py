@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 
 USER_AGENT = "Mozilla/5.0 (compatible; CodexNatureReader/1.0; +https://openai.com/)"
 TIMEOUT = 20
+FIGURE_TIMEOUT = 3
 REQUEST_DELAY_SEC = 0.35
 REQUEST_JITTER_SEC = 0.25
 MAX_FIGURES = 12
@@ -240,7 +241,7 @@ def discover_figure_urls(doi: str, max_figures: int = MAX_FIGURES) -> list[dict[
         if not url:
             break
         try:
-            response = _SESSION.head(url, timeout=TIMEOUT, allow_redirects=True)
+            response = _SESSION.head(url, timeout=FIGURE_TIMEOUT, allow_redirects=True)
         except requests.RequestException:
             misses += 1
             if misses >= MISS_LIMIT:
