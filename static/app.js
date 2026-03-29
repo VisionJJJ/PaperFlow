@@ -21,6 +21,9 @@ const state = {
     detail: null,
     figureIndex: 0,
     message: "",
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
   },
 };
 
@@ -46,6 +49,7 @@ const refs = {
   imageModal: document.getElementById("imageModal"),
   modalBody: document.getElementById("modalBody"),
   readerPreviewModal: document.getElementById("readerPreviewModal"),
+  readerPreviewCard: document.getElementById("readerPreviewCard"),
   readerPreviewBody: document.getElementById("readerPreviewBody"),
 };
 
@@ -283,6 +287,7 @@ async function ensureFeedPage(mode) {
 
 async function switchMode(mode) {
   state.mode = mode;
+  closeReaderPreview();
   renderModeTabs();
   refs.readerPanel.classList.toggle("hidden", mode === "images");
   refs.imagePanel.classList.toggle("hidden", mode !== "images");
@@ -328,10 +333,19 @@ function queueEmptyHtml() {
   `;
 }
 
+function readerFlowProgress(feed) {
+  const total = Math.max(feed.total || 0, feed.ids.length || 0, 1);
+  const position = Math.max(1, total - feed.ids.length + 1);
+  return {
+    total,
+    position,
+    percent: Math.max(6, Math.min(100, (position / total) * 100)),
+  };
+}
+
 function renderReader() {
   const feed = currentFeed();
   const detail = feed.ids[feed.currentIndex] ? feed.details[feed.ids[feed.currentIndex]] : null;
-  const progress = state.overview?.progress || { todayHandled: 0, todayTotal: 0 };
 
   if (feed.loading && !feed.ids.length) {
     refs.readerPanel.innerHTML = '<div class="placeholder-card">正在加载论文卡片...</div>';
@@ -359,14 +373,15 @@ function renderReader() {
     .map((keyword) => `<span class="keyword-pill">${escapeHtml(keyword)}</span>`)
     .join("");
   const figureCount = figures.length ? `${feed.activeFigure + 1} / ${figures.length}` : "";
+  const flow = readerFlowProgress(feed);
 
   refs.readerPanel.innerHTML = `
     <article class="reader-card" id="readerCard">
-      <div class="reader-status">
-        <span>${state.mode === "today" ? "今日新增" : "待阅读"} · ${feed.currentIndex + 1} / ${Math.max(feed.total, feed.ids.length)}</span>
-        <span>${escapeHtml(articleStatusLabel(detail))}</span>
+      <div class="reader-flow">
+        <span class="reader-flow-label">${state.mode === "today" ? "今日新增" : "待阅读"}</span>
+        <div class="reader-progressbar flow-progressbar"><span style="width:${flow.percent}%"></span></div>
+        <span class="reader-flow-state">${escapeHtml(articleStatusLabel(detail))}</span>
       </div>
-      ${state.mode === "today" ? `<div class="reader-progressbar"><span style="width:${progress.todayTotal ? (progress.todayHandled / progress.todayTotal) * 100 : 0}%"></span></div>` : ""}
 
       <header class="reader-head">
         <div class="issue-line">
@@ -383,12 +398,9 @@ function renderReader() {
           activeFigure
             ? `
           <div class="figure-stage" data-reader-figure="true">
+            <span class="figure-stage-count">${escapeHtml(figureCount)}</span>
             <div class="figure-frame" id="readerFigureFrame">
               <canvas id="readerFigureCanvas" class="figure-canvas" data-image-url="${escapeHtml(activeFigure.image_url)}" aria-label="${escapeHtml(activeFigure.title || "论文插图")}"></canvas>
-            </div>
-            <div class="figure-stage-meta">
-              <span>${escapeHtml(activeFigure.title || `Figure ${feed.activeFigure + 1}`)}</span>
-              ${figureCount ? `<strong>${escapeHtml(figureCount)}</strong>` : ""}
             </div>
           </div>
         `
@@ -444,10 +456,10 @@ function renderReader() {
           <button class="action-button icon-button ${feed.expanded ? "open" : ""}" data-action="toggle-detail" type="button" aria-label="${feed.expanded ? "收起详情" : "展开详情"}" title="${feed.expanded ? "收起详情" : "展开详情"}">
             <span class="detail-chevron">⌄</span>
           </button>
-          <button class="action-button warn" data-action="dismissed" type="button">不感兴趣</button>
-          <button class="action-button" data-action="previous" type="button" ${feed.history.length ? "" : "disabled"}>上一条</button>
-          <button class="action-button ${detail.state?.status === "saved" ? "saved" : ""}" data-action="saved" type="button" ${detail.state?.status === "saved" ? "disabled" : ""}>${detail.state?.status === "saved" ? "已收藏" : "收藏论文"}</button>
-          <button class="action-button primary" data-action="next" type="button">下一条</button>
+          <button class="action-button warn" data-action="dismissed" type="button" aria-label="不感兴趣" title="不感兴趣">×</button>
+          <button class="action-button" data-action="previous" type="button" ${feed.history.length ? "" : "disabled"} aria-label="上一条" title="上一条">‹</button>
+          <button class="action-button ${detail.state?.status === "saved" ? "saved" : ""}" data-action="saved" type="button" ${detail.state?.status === "saved" ? "disabled" : ""} aria-label="${detail.state?.status === "saved" ? "已收藏" : "收藏论文"}" title="${detail.state?.status === "saved" ? "已收藏" : "收藏论文"}">${detail.state?.status === "saved" ? "★" : "☆"}</button>
+          <button class="action-button primary" data-action="next" type="button" aria-label="下一条" title="下一条">›</button>
         </div>
       </footer>
     </article>
@@ -499,6 +511,9 @@ function openReaderPreview(detail, figureIndex) {
     detail,
     figureIndex: Math.max(0, Math.min(figureIndex, detail.figures.length - 1)),
     message: "",
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
   };
   renderReaderPreview();
 }
@@ -508,6 +523,9 @@ function closeReaderPreview() {
   state.readerPreview.detail = null;
   state.readerPreview.figureIndex = 0;
   state.readerPreview.message = "";
+  state.readerPreview.scale = 1;
+  state.readerPreview.offsetX = 0;
+  state.readerPreview.offsetY = 0;
   refs.readerPreviewModal.classList.add("hidden");
 }
 
@@ -531,7 +549,7 @@ function renderReaderPreview() {
       <p class="reader-preview-caption">${escapeHtml(figure.title || `Figure ${preview.figureIndex + 1}`)}</p>
       <div class="reader-preview-stage" id="readerPreviewStage">
         <div class="reader-preview-frame" id="readerPreviewFrame">
-          <canvas id="readerPreviewCanvas" class="figure-canvas" data-image-url="${escapeHtml(figure.image_url)}"></canvas>
+          <img id="readerPreviewImage" class="reader-preview-image" src="${escapeHtml(figure.image_url)}" alt="${escapeHtml(figure.title || detail.title || "科研图片")}" />
         </div>
       </div>
       <div class="reader-preview-hint">
@@ -542,38 +560,124 @@ function renderReaderPreview() {
     </section>
   `;
 
+  positionReaderPreviewCard();
   refs.readerPreviewModal.classList.remove("hidden");
-  requestAnimationFrame(() => {
-    void paintContainCanvas("readerPreviewCanvas", "readerPreviewFrame", figure.image_url);
-  });
+  applyReaderPreviewTransform();
   bindReaderPreviewEvents();
+}
+
+function positionReaderPreviewCard() {
+  const rect = refs.readerPanel.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  refs.readerPreviewCard.style.left = `${rect.left}px`;
+  refs.readerPreviewCard.style.top = `${rect.top}px`;
+  refs.readerPreviewCard.style.width = `${rect.width}px`;
+  refs.readerPreviewCard.style.height = `${rect.height}px`;
+}
+
+function applyReaderPreviewTransform() {
+  const image = document.getElementById("readerPreviewImage");
+  if (!image) return;
+  const preview = state.readerPreview;
+  image.style.transform = `translate(${preview.offsetX}px, ${preview.offsetY}px) scale(${preview.scale})`;
 }
 
 function bindReaderPreviewEvents() {
   const stage = document.getElementById("readerPreviewStage");
-  if (!stage) return;
+  const image = document.getElementById("readerPreviewImage");
+  if (!stage || !image) return;
 
   const preview = state.readerPreview;
-  let startX = 0;
-  let startY = 0;
+  const pointers = new Map();
+  let dragState = null;
+  let pinchState = null;
+
+  const clampScale = (value) => Math.max(1, Math.min(value, 4));
+  const distanceBetween = (left, right) => Math.hypot(right.x - left.x, right.y - left.y);
 
   stage.addEventListener("pointerdown", (event) => {
-    startX = event.clientX;
-    startY = event.clientY;
+    stage.setPointerCapture?.(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 1) {
+      dragState = {
+        startX: event.clientX,
+        startY: event.clientY,
+        baseX: preview.offsetX,
+        baseY: preview.offsetY,
+      };
+    } else if (pointers.size === 2) {
+      const [first, second] = [...pointers.values()];
+      pinchState = {
+        distance: distanceBetween(first, second),
+        scale: preview.scale,
+      };
+      dragState = null;
+    }
   });
 
-  stage.addEventListener("pointerup", (event) => {
-    const deltaX = event.clientX - startX;
-    const deltaY = event.clientY - startY;
-    startX = 0;
-    startY = 0;
+  stage.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointers.size === 2 && pinchState) {
+      const [first, second] = [...pointers.values()];
+      const nextDistance = distanceBetween(first, second);
+      preview.scale = clampScale(pinchState.scale * (nextDistance / Math.max(pinchState.distance, 1)));
+      applyReaderPreviewTransform();
+      return;
+    }
+
+    if (pointers.size === 1 && dragState && preview.scale > 1.01) {
+      preview.offsetX = dragState.baseX + (event.clientX - dragState.startX);
+      preview.offsetY = dragState.baseY + (event.clientY - dragState.startY);
+      applyReaderPreviewTransform();
+    }
+  });
+
+  const handlePointerEnd = (event) => {
+    const currentPoint = pointers.get(event.pointerId) || { x: event.clientX, y: event.clientY };
+    pointers.delete(event.pointerId);
+    stage.releasePointerCapture?.(event.pointerId);
+
+    if (pinchState && pointers.size < 2) {
+      pinchState = null;
+    }
+
+    if (pointers.size === 1) {
+      const remaining = [...pointers.values()][0];
+      dragState = {
+        startX: remaining.x,
+        startY: remaining.y,
+        baseX: preview.offsetX,
+        baseY: preview.offsetY,
+      };
+      return;
+    }
+
+    if (!dragState) return;
+    const deltaX = currentPoint.x - dragState.startX;
+    const deltaY = currentPoint.y - dragState.startY;
+    dragState = null;
+
+    if (preview.scale > 1.01) return;
     if (Math.abs(deltaX) < 42 || Math.abs(deltaX) < Math.abs(deltaY)) return;
     const figures = preview.detail?.figures || [];
     const nextIndex = deltaX < 0 ? Math.min(preview.figureIndex + 1, figures.length - 1) : Math.max(preview.figureIndex - 1, 0);
     if (nextIndex !== preview.figureIndex) {
       preview.figureIndex = nextIndex;
       preview.message = "";
+      preview.scale = 1;
+      preview.offsetX = 0;
+      preview.offsetY = 0;
       renderReaderPreview();
+    }
+  };
+
+  stage.addEventListener("pointerup", handlePointerEnd);
+  stage.addEventListener("pointercancel", handlePointerEnd);
+  stage.addEventListener("pointerleave", (event) => {
+    if (pointers.has(event.pointerId)) {
+      handlePointerEnd(event);
     }
   });
 
