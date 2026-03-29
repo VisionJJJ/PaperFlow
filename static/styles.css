@@ -84,33 +84,34 @@ a {
 
 .mode-tabs {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: stretch;
   gap: 0;
   width: 100%;
-  background: rgba(248, 243, 235, 0.98);
-  border-bottom: 1px solid var(--line);
+  height: calc(var(--bottom-nav-height) + env(safe-area-inset-top));
   padding-top: env(safe-area-inset-top);
-}
-
-.mode-tabs-head {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  padding: 4px 12px 2px;
+  background: rgba(248, 243, 235, 0.98);
   border-bottom: 1px solid var(--line);
 }
 
 .mode-brand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: var(--bottom-nav-height);
+  padding: 0 12px;
   font-family: "Iowan Old Style", "Palatino Linotype", Baskerville, serif;
-  font-size: 0.98rem;
+  font-size: 0.9rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+  border-right: 1px solid var(--line);
+  white-space: nowrap;
 }
 
 .mode-tab-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .mode-tab,
@@ -121,7 +122,8 @@ a {
 }
 
 .mode-tab {
-  min-height: 38px;
+  min-height: 0;
+  height: var(--bottom-nav-height);
   display: grid;
   place-items: center;
   gap: 2px;
@@ -893,17 +895,12 @@ a {
     --bottom-nav-height: 42px;
   }
 
-  .mode-tabs-head {
-    min-height: 24px;
-    padding: 3px 10px 1px;
-  }
-
   .mode-brand {
-    font-size: 0.88rem;
+    padding: 0 8px;
+    font-size: 0.82rem;
   }
 
   .mode-tab {
-    min-height: 34px;
     padding: 2px 4px;
   }
 
