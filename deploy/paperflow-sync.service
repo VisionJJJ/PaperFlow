@@ -1,0 +1,9 @@
+[Unit]
+Description=PaperFlow RSS archive sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/paperflow
+ExecStart=/opt/paperflow/venv/bin/python /opt/paperflow/sync_archive.py --backfill-missing --backfill-limit 6

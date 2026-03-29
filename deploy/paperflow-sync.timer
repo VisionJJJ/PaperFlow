@@ -1,0 +1,11 @@
+[Unit]
+Description=Run PaperFlow RSS archive sync every 30 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=30min
+Unit=paperflow-sync.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

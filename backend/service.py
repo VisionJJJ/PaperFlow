@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
+
 try:
     from zoneinfo import ZoneInfo
 except ImportError:  # Python < 3.9
@@ -35,6 +36,7 @@ from .storage import read_json, write_json
 
 LOCK = Lock()
 TZ = ZoneInfo(USER_TIMEZONE)
+STATE_SCHEMA_VERSION = 2
 
 
 def utc_now_iso() -> str:
@@ -63,8 +65,190 @@ def article_sort_key(article: dict[str, Any]) -> tuple[Any, ...]:
     return (int(article.get("priority", 999)), stamp, article.get("title", ""))
 
 
+def empty_resume_state() -> dict[str, Any]:
+    return {"article_id": None, "archive_seq": 0, "updated_at": None}
+
+
 def default_state() -> dict[str, Any]:
-    return {"articles": {}, "saved_images": {}, "ui": {"today_index": 0, "queue_index": 0}}
+    return {
+        "schema_version": STATE_SCHEMA_VERSION,
+        "article_states": {},
+        "saved_images": {},
+        "reading": {
+            "today": empty_resume_state(),
+            "queue": empty_resume_state(),
+            "last_seen_archive_seq": 0,
+            "last_opened_mode": "today",
+        },
+    }
+
+
+def normalize_article_state(raw: Any) -> dict[str, Any]:
+    base = {"status": "unread", "note": "", "saved_at": None, "handled_at": None}
+    if isinstance(raw, dict):
+        base.update(
+            {
+                "status": str(raw.get("status", base["status"]) or base["status"]).strip() or "unread",
+                "note": str(raw.get("note", "") or "").strip(),
+                "saved_at": raw.get("saved_at"),
+                "handled_at": raw.get("handled_at"),
+            }
+        )
+    if base["status"] not in {"unread", "viewed", "saved", "dismissed"}:
+        base["status"] = "unread"
+    return base
+
+
+def parse_saved_image_key(key: str) -> tuple[str, int]:
+    article_id, _, suffix = str(key or "").rpartition(":")
+    if not article_id:
+        return "", 0
+    try:
+        return article_id, int(suffix)
+    except ValueError:
+        return article_id, 0
+
+
+def normalize_saved_image(raw_key: str, raw_value: Any) -> dict[str, Any] | None:
+    if not isinstance(raw_value, dict):
+        return None
+    article_id = str(raw_value.get("article_id", "")).strip()
+    figure_index = raw_value.get("figure_index")
+    if not article_id:
+        article_id, inferred_index = parse_saved_image_key(raw_key)
+        figure_index = inferred_index if figure_index is None else figure_index
+    try:
+        figure_index = int(figure_index if figure_index is not None else 0)
+    except (TypeError, ValueError):
+        figure_index = 0
+    if not article_id:
+        return None
+    return {
+        "article_id": article_id,
+        "figure_index": figure_index,
+        "saved_at": raw_value.get("saved_at"),
+    }
+
+
+def normalize_resume(raw: Any) -> dict[str, Any]:
+    resume = empty_resume_state()
+    if isinstance(raw, dict):
+        resume["article_id"] = str(raw.get("article_id", "")).strip() or None
+        try:
+            resume["archive_seq"] = int(raw.get("archive_seq", 0) or 0)
+        except (TypeError, ValueError):
+            resume["archive_seq"] = 0
+        resume["updated_at"] = raw.get("updated_at")
+    return resume
+
+
+def normalize_state(raw: Any) -> tuple[dict[str, Any], bool]:
+    changed = False
+    base = default_state()
+    if not isinstance(raw, dict):
+        return base, True
+
+    if "article_states" in raw or "reading" in raw or raw.get("schema_version") == STATE_SCHEMA_VERSION:
+        article_states = raw.get("article_states", {})
+        if not isinstance(article_states, dict):
+            article_states = {}
+            changed = True
+        for article_id, payload in article_states.items():
+            normalized = normalize_article_state(payload)
+            base["article_states"][str(article_id)] = normalized
+            if normalized != payload:
+                changed = True
+
+        saved_images = raw.get("saved_images", {})
+        if not isinstance(saved_images, dict):
+            saved_images = {}
+            changed = True
+        for key, payload in saved_images.items():
+            normalized = normalize_saved_image(str(key), payload)
+            if normalized:
+                base["saved_images"][f"{normalized['article_id']}:{normalized['figure_index']}"] = normalized
+                if normalized != payload or key != f"{normalized['article_id']}:{normalized['figure_index']}":
+                    changed = True
+
+        reading = raw.get("reading", {})
+        if not isinstance(reading, dict):
+            reading = {}
+            changed = True
+        base["reading"]["today"] = normalize_resume(reading.get("today"))
+        base["reading"]["queue"] = normalize_resume(reading.get("queue"))
+        base["reading"]["last_opened_mode"] = (
+            str(reading.get("last_opened_mode", "today")).strip() or "today"
+        )
+        try:
+            base["reading"]["last_seen_archive_seq"] = int(reading.get("last_seen_archive_seq", 0) or 0)
+        except (TypeError, ValueError):
+            base["reading"]["last_seen_archive_seq"] = 0
+            changed = True
+
+        if raw.get("schema_version") != STATE_SCHEMA_VERSION:
+            changed = True
+        return base, changed
+
+    old_articles = raw.get("articles", {})
+    if isinstance(old_articles, dict):
+        for article_id, payload in old_articles.items():
+            base["article_states"][str(article_id)] = normalize_article_state(payload)
+
+    old_saved_images = raw.get("saved_images", {})
+    if isinstance(old_saved_images, dict):
+        for key, payload in old_saved_images.items():
+            normalized = normalize_saved_image(str(key), payload)
+            if normalized:
+                base["saved_images"][f"{normalized['article_id']}:{normalized['figure_index']}"] = normalized
+
+    return base, True
+
+
+def normalize_articles(raw_articles: Any) -> tuple[list[dict[str, Any]], bool]:
+    if not isinstance(raw_articles, list):
+        return [], True
+
+    changed = False
+    normalized: list[dict[str, Any]] = []
+    for raw in raw_articles:
+        if not isinstance(raw, dict):
+            changed = True
+            continue
+        article = dict(raw)
+        article.setdefault("id", "")
+        article.setdefault("doi", "")
+        article.setdefault("article_url", "")
+        article.setdefault("rss_title", "")
+        article.setdefault("title", article.get("rss_title", ""))
+        article.setdefault("journal_title", article.get("subscription_name", "Nature"))
+        article.setdefault("subscription_id", "")
+        article.setdefault("subscription_name", "")
+        article.setdefault("rss_url", "")
+        article.setdefault("priority", 999)
+        article.setdefault("archive_seq", 0)
+        article.setdefault("first_seen_at", None)
+        article.setdefault("first_seen_local_date", today_local())
+        article.setdefault("summary_hydrated_at", None)
+        article.setdefault("detail_hydrated_at", None)
+        article.setdefault("published_at", None)
+        article.setdefault("article_type", "")
+        article.setdefault("keywords", [])
+        article.setdefault("figure_count", 0)
+        article.setdefault("thumbnail_url", None)
+        article.setdefault("initial_backfill", False)
+        if not article.get("title"):
+            article["title"] = article.get("rss_title", "")
+            changed = True
+        normalized.append(article)
+
+    ordered_oldest = sorted(normalized, key=article_sort_key)
+    seqs = [item.get("archive_seq") for item in ordered_oldest]
+    if any(not isinstance(seq, int) or seq <= 0 for seq in seqs) or len(set(seqs)) != len(ordered_oldest):
+        changed = True
+        for archive_seq, article in enumerate(ordered_oldest, start=1):
+            article["archive_seq"] = archive_seq
+
+    return sorted(ordered_oldest, key=article_sort_key, reverse=True), changed
 
 
 def load_subscriptions() -> list[dict[str, Any]]:
@@ -97,23 +281,27 @@ def load_subscriptions() -> list[dict[str, Any]]:
 
 
 def load_articles() -> list[dict[str, Any]]:
-    return read_json(ARTICLES_PATH, [])
+    articles, changed = normalize_articles(read_json(ARTICLES_PATH, []))
+    if changed:
+        write_json(ARTICLES_PATH, articles)
+    return articles
 
 
 def save_articles(articles: list[dict[str, Any]]) -> None:
-    write_json(ARTICLES_PATH, articles)
+    ordered, _ = normalize_articles(articles)
+    write_json(ARTICLES_PATH, ordered)
 
 
 def load_state() -> dict[str, Any]:
-    state = read_json(STATE_PATH, default_state())
-    state.setdefault("articles", {})
-    state.setdefault("saved_images", {})
-    state.setdefault("ui", {"today_index": 0, "queue_index": 0})
+    state, changed = normalize_state(read_json(STATE_PATH, default_state()))
+    if changed:
+        write_json(STATE_PATH, state)
     return state
 
 
 def save_state(state: dict[str, Any]) -> None:
-    write_json(STATE_PATH, state)
+    normalized, _ = normalize_state(state)
+    write_json(STATE_PATH, normalized)
 
 
 def initialize_if_empty() -> None:
@@ -123,9 +311,15 @@ def initialize_if_empty() -> None:
 
 
 def get_article_state(state: dict[str, Any], article_id: str) -> dict[str, Any]:
-    base = {"status": "unread", "note": "", "saved_at": None, "handled_at": None}
-    base.update(state.get("articles", {}).get(article_id, {}))
-    return base
+    return normalize_article_state(state.get("article_states", {}).get(article_id, {}))
+
+
+def get_saved_image_index(state: dict[str, Any], article_id: str) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in state.get("saved_images", {}).values()
+        if item.get("article_id") == article_id
+    ]
 
 
 def bucket_for_article(article: dict[str, Any], state: dict[str, Any], day: str) -> str | None:
@@ -140,13 +334,60 @@ def bucket_for_article(article: dict[str, Any], state: dict[str, Any], day: str)
 def merge_article_with_state(article: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     merged = deepcopy(article)
     merged["state"] = get_article_state(state, article["id"])
-    merged["saved_image_count"] = len(
-        [key for key in state.get("saved_images", {}) if key.startswith(f"{article['id']}:")]
-    )
+    merged["saved_image_count"] = len(get_saved_image_index(state, article["id"]))
     return merged
 
 
-def sync_subscriptions(single_url: str | None = None) -> dict[str, Any]:
+def max_archive_seq(articles: list[dict[str, Any]]) -> int:
+    return max([int(article.get("archive_seq", 0) or 0) for article in articles] or [0])
+
+
+def read_detail_cache(article_id: str) -> dict[str, Any]:
+    return read_json(article_cache_path(article_id), {})
+
+
+def prefetch_article_detail(article: dict[str, Any]) -> dict[str, Any]:
+    figures = discover_figure_urls(article["doi"])
+    hydrated_at = utc_now_iso()
+    detail = {
+        "id": article["id"],
+        "doi": article["doi"],
+        "article_url": article["article_url"],
+        "source_urls": {
+            "article": article["article_url"],
+            "figures": [figure["image_url"] for figure in figures],
+        },
+        "figures": figures,
+        "detail_hydrated_at": hydrated_at,
+    }
+    write_json(article_cache_path(article["id"]), detail)
+    article["detail_hydrated_at"] = hydrated_at
+    article["figure_count"] = len(figures)
+    article["thumbnail_url"] = figures[0]["image_url"] if figures else None
+    return detail
+
+
+def backfill_missing_article_details(
+    articles: list[dict[str, Any]],
+    limit: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    if limit == 0:
+        return sorted(articles, key=article_sort_key, reverse=True), 0
+    if limit is not None and limit < 0:
+        limit = 0
+    updated = 0
+    for article in sorted(articles, key=article_sort_key, reverse=True):
+        cache = read_detail_cache(article["id"])
+        if article.get("detail_hydrated_at") and cache.get("detail_hydrated_at"):
+            continue
+        prefetch_article_detail(article)
+        updated += 1
+        if limit and updated >= limit:
+            break
+    return sorted(articles, key=article_sort_key, reverse=True), updated
+
+
+def sync_subscriptions(single_url: str | None = None, backfill_missing_limit: int = 0) -> dict[str, Any]:
     with LOCK:
         subscriptions = load_subscriptions()
         articles = load_articles()
@@ -154,83 +395,95 @@ def sync_subscriptions(single_url: str | None = None) -> dict[str, Any]:
         now_iso = utc_now_iso()
         local_today = today_local()
         created = 0
-        updated = 0
+        skipped_existing = 0
+        next_seq = max_archive_seq(articles) + 1
 
         targets = subscriptions
         if single_url:
             targets = [item for item in subscriptions if item.get("url") == single_url]
             if not targets:
-                targets = [
-                    {
-                        "id": slugify(single_url),
-                        "name": single_url,
-                        "url": single_url,
-                        "priority": len(subscriptions) + 1,
-                        "last_synced_at": None,
-                    }
-                ]
+                appended = {
+                    "id": slugify(single_url),
+                    "name": single_url,
+                    "url": single_url,
+                    "priority": len(subscriptions) + 1,
+                    "last_synced_at": None,
+                }
+                subscriptions.append(appended)
+                targets = [appended]
 
         for subscription in targets:
             initial_sync = not subscription.get("last_synced_at")
             root = fetch_xml(subscription["url"])
             for item in parse_rss_items(root):
                 article_id = article_id_from_doi(item["doi"])
-                article = article_map.get(article_id)
-                is_new = article is None
-                if is_new:
-                    created += 1
-                    article = {
-                        "id": article_id,
-                        "doi": item["doi"],
-                        "article_url": item["article_url"],
-                        "rss_title": item["title"],
-                        "title": item["title"],
-                        "journal_title": item["journal_title"] or subscription["name"],
-                        "subscription_id": subscription["id"],
-                        "subscription_name": subscription["name"],
-                        "rss_url": subscription["url"],
-                        "priority": subscription.get("priority", 999),
-                        "first_seen_at": now_iso,
-                        "first_seen_local_date": local_today,
-                        "summary_hydrated_at": None,
-                        "detail_hydrated_at": None,
-                        "published_at": None,
-                        "article_type": "",
-                        "keywords": [],
-                        "figure_count": 0,
-                        "thumbnail_url": None,
-                        "initial_backfill": False,
-                    }
-                else:
-                    updated += 1
+                existing = article_map.get(article_id)
+                if existing:
+                    skipped_existing += 1
+                    existing["priority"] = subscription.get("priority", existing.get("priority", 999))
+                    existing["subscription_name"] = subscription["name"]
+                    existing["subscription_id"] = subscription["id"]
+                    existing["rss_url"] = subscription["url"]
+                    if not existing.get("journal_title"):
+                        existing["journal_title"] = item["journal_title"] or subscription["name"]
+                    continue
 
-                if not article.get("summary_hydrated_at"):
-                    summary = fetch_article_summary(item["article_url"], rss_title=item["title"], doi=item["doi"])
-                    if not should_include_article(summary.get("title", ""), summary.get("article_type", "")):
-                        article_map.pop(article_id, None)
-                        continue
-                    article.update(summary)
-                    article["summary_hydrated_at"] = now_iso
-                    publish_date = article.get("published_at")
-                    article["initial_backfill"] = bool(initial_sync and publish_date and publish_date != local_today)
+                summary = fetch_article_summary(item["article_url"], rss_title=item["title"], doi=item["doi"])
+                if not should_include_article(summary.get("title", ""), summary.get("article_type", "")):
+                    continue
 
-                article["priority"] = subscription.get("priority", article.get("priority", 999))
-                article["subscription_name"] = subscription["name"]
-                article["subscription_id"] = subscription["id"]
-                article["rss_url"] = subscription["url"]
-                article["journal_title"] = article.get("journal_title") or item["journal_title"] or subscription["name"]
+                article = {
+                    "id": article_id,
+                    "archive_seq": next_seq,
+                    "doi": item["doi"],
+                    "article_url": item["article_url"],
+                    "rss_title": item["title"],
+                    "title": item["title"],
+                    "journal_title": item["journal_title"] or subscription["name"],
+                    "subscription_id": subscription["id"],
+                    "subscription_name": subscription["name"],
+                    "rss_url": subscription["url"],
+                    "priority": subscription.get("priority", 999),
+                    "first_seen_at": now_iso,
+                    "first_seen_local_date": local_today,
+                    "summary_hydrated_at": now_iso,
+                    "detail_hydrated_at": None,
+                    "published_at": None,
+                    "article_type": "",
+                    "keywords": [],
+                    "figure_count": 0,
+                    "thumbnail_url": None,
+                    "initial_backfill": False,
+                }
+                article.update(summary)
+                publish_date = article.get("published_at")
+                article["initial_backfill"] = bool(initial_sync and publish_date and publish_date != local_today)
+                prefetch_article_detail(article)
                 article_map[article_id] = article
+                next_seq += 1
+                created += 1
 
-            if any(existing.get("id") == subscription["id"] for existing in subscriptions):
-                subscription["last_synced_at"] = now_iso
+            subscription["last_synced_at"] = now_iso
 
         ordered = sorted(article_map.values(), key=article_sort_key, reverse=True)
+        ordered, backfilled = backfill_missing_article_details(ordered, limit=backfill_missing_limit)
         save_articles(ordered)
         write_json(SUBSCRIPTIONS_PATH, subscriptions)
-        return {"created": created, "updated": updated, "count": len(ordered), "synced_at": now_iso}
+        return {
+            "created": created,
+            "skipped_existing": skipped_existing,
+            "backfilled": backfilled,
+            "count": len(ordered),
+            "synced_at": now_iso,
+            "latest_archive_seq": max_archive_seq(ordered),
+        }
 
 
-def hydrate_article_details(article_id: str, state: dict[str, Any], hydrate_missing: bool = True) -> dict[str, Any] | None:
+def hydrate_article_details(
+    article_id: str,
+    state: dict[str, Any],
+    hydrate_missing: bool = False,
+) -> dict[str, Any] | None:
     articles = load_articles()
     article_map = {item["id"]: item for item in articles}
     article = article_map.get(article_id)
@@ -240,18 +493,51 @@ def hydrate_article_details(article_id: str, state: dict[str, Any], hydrate_miss
     cache_path = article_cache_path(article_id)
     detail = read_json(cache_path, {})
     if hydrate_missing and (not detail or not detail.get("detail_hydrated_at")):
-        figures = discover_figure_urls(article["doi"])
-        detail = {"id": article_id, "figures": figures, "detail_hydrated_at": utc_now_iso()}
-        write_json(cache_path, detail)
-        article["detail_hydrated_at"] = detail["detail_hydrated_at"]
-        article["figure_count"] = len(figures)
-        article["thumbnail_url"] = figures[0]["image_url"] if figures else None
+        detail = prefetch_article_detail(article)
         save_articles(sorted(article_map.values(), key=article_sort_key, reverse=True))
 
     merged = merge_article_with_state(article, state)
     merged["figures"] = detail.get("figures", [])
     merged["detail_hydrated_at"] = detail.get("detail_hydrated_at")
+    merged["source_urls"] = detail.get("source_urls", {})
     return merged
+
+
+def unread_bucket_articles(mode: str, articles: list[dict[str, Any]], state: dict[str, Any], day: str) -> list[dict[str, Any]]:
+    return [
+        article
+        for article in sorted(articles, key=article_sort_key, reverse=True)
+        if bucket_for_article(article, state, day) == mode
+    ]
+
+
+def resolve_resume_index(mode: str, articles: list[dict[str, Any]], state: dict[str, Any]) -> int:
+    reading = state.get("reading", {}).get(mode, {})
+    article_id = reading.get("article_id")
+    if article_id:
+        for index, article in enumerate(articles):
+            if article["id"] == article_id:
+                return index
+    archive_seq = reading.get("archive_seq") or 0
+    if archive_seq:
+        for index, article in enumerate(articles):
+            if int(article.get("archive_seq", 0) or 0) == int(archive_seq):
+                return index
+    return 0
+
+
+def update_resume_anchor(state: dict[str, Any], mode: str, article: dict[str, Any] | None) -> None:
+    reading = state.setdefault("reading", default_state()["reading"])
+    reading.setdefault(mode, empty_resume_state())
+    if article:
+        reading[mode] = {
+            "article_id": article["id"],
+            "archive_seq": int(article.get("archive_seq", 0) or 0),
+            "updated_at": utc_now_iso(),
+        }
+        reading["last_opened_mode"] = mode
+    else:
+        reading[mode] = empty_resume_state()
 
 
 def get_feed(mode: str, offset: int = 0, limit: int = DEFAULT_BATCH_SIZE) -> dict[str, Any]:
@@ -259,38 +545,70 @@ def get_feed(mode: str, offset: int = 0, limit: int = DEFAULT_BATCH_SIZE) -> dic
     limit = max(1, min(limit, MAX_BATCH_SIZE))
     state = load_state()
     day = today_local()
-    articles = [
-        article
-        for article in sorted(load_articles(), key=article_sort_key, reverse=True)
-        if bucket_for_article(article, state, day) == mode
-    ]
-    page = articles[offset : offset + limit]
+    articles = unread_bucket_articles(mode, load_articles(), state, day)
+    resume_index = resolve_resume_index(mode, articles, state)
+    visible = articles[resume_index:]
+    page = visible[offset : offset + limit]
+    if offset == 0:
+        update_resume_anchor(state, mode, visible[0] if visible else None)
+        save_state(state)
     return {
         "mode": mode,
         "offset": offset,
         "limit": limit,
-        "total": len(articles),
+        "total": len(visible),
         "ids": [article["id"] for article in page],
-        "has_more": offset + limit < len(articles),
+        "has_more": offset + limit < len(visible),
+        "resume_index": resume_index,
     }
 
 
 def get_article_details(article_ids: list[str]) -> list[dict[str, Any]]:
     state = load_state()
     details = []
-    for index, article_id in enumerate(article_ids[:MAX_BATCH_SIZE]):
-        detail = hydrate_article_details(article_id, state, hydrate_missing=index == 0)
+    for article_id in article_ids[:MAX_BATCH_SIZE]:
+        detail = hydrate_article_details(article_id, state, hydrate_missing=False)
         if detail:
             details.append(detail)
     return details
+
+
+def next_bucket_anchor(
+    state: dict[str, Any],
+    mode: str,
+    current_article_id: str,
+    articles: list[dict[str, Any]],
+    day: str,
+) -> None:
+    bucket_articles = unread_bucket_articles(mode, articles, state, day)
+    if not bucket_articles:
+        update_resume_anchor(state, mode, None)
+        return
+    current_index = next(
+        (index for index, article in enumerate(bucket_articles) if article["id"] == current_article_id),
+        None,
+    )
+    if current_index is None:
+        update_resume_anchor(state, mode, bucket_articles[0])
+        return
+    next_index = min(current_index, len(bucket_articles) - 1)
+    update_resume_anchor(state, mode, bucket_articles[next_index] if bucket_articles else None)
 
 
 def set_article_action(article_id: str, action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = payload or {}
     with LOCK:
         state = load_state()
-        article_state = state["articles"].setdefault(article_id, {})
+        articles = load_articles()
+        article_map = {item["id"]: item for item in articles}
+        article = article_map.get(article_id)
         now_iso = utc_now_iso()
+        day = today_local()
+        current_mode = bucket_for_article(article, state, day) if article else None
+
+        article_state = state.setdefault("article_states", {}).setdefault(article_id, {})
+        article_state.update(get_article_state(state, article_id))
+
         if action == "viewed":
             article_state["status"] = "viewed"
             article_state["handled_at"] = now_iso
@@ -313,6 +631,17 @@ def set_article_action(article_id: str, action: str, payload: dict[str, Any] | N
             article_state["handled_at"] = None
         else:
             raise ValueError(f"Unsupported action: {action}")
+
+        if action in {"viewed", "dismissed", "saved"} and article:
+            last_seen = int(state.setdefault("reading", default_state()["reading"]).get("last_seen_archive_seq", 0) or 0)
+            state["reading"]["last_seen_archive_seq"] = max(last_seen, int(article.get("archive_seq", 0) or 0))
+            if current_mode:
+                next_bucket_anchor(state, current_mode, article_id, articles, day)
+        elif action == "reset" and article:
+            mode_after = bucket_for_article(article, state, day)
+            if mode_after:
+                update_resume_anchor(state, mode_after, article)
+
         save_state(state)
     return get_overview()
 
@@ -329,7 +658,6 @@ def toggle_saved_image(article_id: str, figure_index: int, image_url: str) -> di
             saved_images[key] = {
                 "article_id": article_id,
                 "figure_index": figure_index,
-                "image_url": image_url,
                 "saved_at": utc_now_iso(),
             }
             saved = True
@@ -340,7 +668,12 @@ def toggle_saved_image(article_id: str, figure_index: int, image_url: str) -> di
     return overview
 
 
-def get_recent_image_tiles(offset: int = 0, limit: int = DEFAULT_IMAGE_BATCH, journal: str | None = None, saved_only: bool = False) -> dict[str, Any]:
+def get_recent_image_tiles(
+    offset: int = 0,
+    limit: int = DEFAULT_IMAGE_BATCH,
+    journal: str | None = None,
+    saved_only: bool = False,
+) -> dict[str, Any]:
     initialize_if_empty()
     state = load_state()
     cutoff = datetime.now(TZ).date() - timedelta(days=IMAGE_LOOKBACK_DAYS)
@@ -356,8 +689,8 @@ def get_recent_image_tiles(offset: int = 0, limit: int = DEFAULT_IMAGE_BATCH, jo
                 pass
         if journal and journal != "all" and article.get("journal_title") != journal:
             continue
-        detail = hydrate_article_details(article["id"], state)
-        if not detail:
+        detail = hydrate_article_details(article["id"], state, hydrate_missing=False)
+        if not detail or not detail.get("detail_hydrated_at"):
             continue
         for figure in detail.get("figures", []):
             key = f"{article['id']}:{figure['index']}"
@@ -378,13 +711,15 @@ def get_recent_image_tiles(offset: int = 0, limit: int = DEFAULT_IMAGE_BATCH, jo
                     "saved": saved,
                 }
             )
-            if len(tiles) >= offset + limit:
-                break
-        if len(tiles) >= offset + limit:
-            break
 
     page = tiles[offset : offset + limit]
-    return {"items": page, "offset": offset, "limit": limit, "total": len(tiles), "has_more": offset + limit < len(tiles)}
+    return {
+        "items": page,
+        "offset": offset,
+        "limit": limit,
+        "total": len(tiles),
+        "has_more": offset + limit < len(tiles),
+    }
 
 
 def get_saved_papers(query: str = "") -> list[dict[str, Any]]:
@@ -397,11 +732,21 @@ def get_saved_papers(query: str = "") -> list[dict[str, Any]]:
             continue
         merged = merge_article_with_state(article, state)
         if query:
-            haystack = " ".join([article.get("title", ""), article.get("journal_title", ""), article_state.get("note", "")]).lower()
+            haystack = " ".join(
+                [article.get("title", ""), article.get("journal_title", ""), article_state.get("note", "")]
+            ).lower()
             if query not in haystack:
                 continue
         saved.append(merged)
     return sorted(saved, key=lambda item: item["state"].get("saved_at") or "", reverse=True)
+
+
+def resolve_saved_figure(article_id: str, figure_index: int) -> dict[str, Any] | None:
+    detail = read_detail_cache(article_id)
+    for figure in detail.get("figures", []):
+        if int(figure.get("index", -1)) == int(figure_index):
+            return figure
+    return None
 
 
 def get_saved_images() -> list[dict[str, Any]]:
@@ -412,10 +757,15 @@ def get_saved_images() -> list[dict[str, Any]]:
         article = article_map.get(item["article_id"])
         if not article:
             continue
+        figure = resolve_saved_figure(item["article_id"], item["figure_index"])
+        image_url = figure.get("image_url") if figure else None
+        if not image_url:
+            continue
         images.append(
             {
                 "key": key,
-                "image_url": item["image_url"],
+                "image_url": image_url,
+                "title": figure.get("title") if figure else None,
                 "saved_at": item.get("saved_at"),
                 "article_id": item["article_id"],
                 "figure_index": item["figure_index"],
@@ -431,7 +781,15 @@ def get_saved_images() -> list[dict[str, Any]]:
 def add_subscription(name: str, url: str) -> dict[str, Any]:
     with LOCK:
         subscriptions = [item for item in load_subscriptions() if item["url"] != url]
-        subscriptions.append({"id": slugify(name or url), "name": name.strip() or url.strip(), "url": url.strip(), "priority": len(subscriptions) + 1, "last_synced_at": None})
+        subscriptions.append(
+            {
+                "id": slugify(name or url),
+                "name": name.strip() or url.strip(),
+                "url": url.strip(),
+                "priority": len(subscriptions) + 1,
+                "last_synced_at": None,
+            }
+        )
         write_json(SUBSCRIPTIONS_PATH, subscriptions)
     sync_subscriptions(single_url=url)
     return get_overview()
@@ -473,20 +831,48 @@ def get_overview() -> dict[str, Any]:
     state = load_state()
     articles = load_articles()
     day = today_local()
-    today_total = len([article for article in articles if article.get("first_seen_local_date") == day and not article.get("initial_backfill")])
+    today_total = len(
+        [
+            article
+            for article in articles
+            if article.get("first_seen_local_date") == day and not article.get("initial_backfill")
+        ]
+    )
     today_pending = len([article for article in articles if bucket_for_article(article, state, day) == "today"])
     queue_pending = len([article for article in articles if bucket_for_article(article, state, day) == "queue"])
     saved_papers = len(get_saved_papers())
     saved_images = len(get_saved_images())
-    viewed_count = len([item for item in state.get("articles", {}).values() if item.get("status") == "viewed"])
+    viewed_count = len(
+        [item for item in state.get("article_states", {}).values() if item.get("status") == "viewed"]
+    )
     journals = sorted({article.get("journal_title") for article in articles if article.get("journal_title")})
     subscriptions = sorted(load_subscriptions(), key=lambda item: item.get("priority", 999))
     last_synced_at = max([item.get("last_synced_at") for item in subscriptions if item.get("last_synced_at")] or [None])
+    reading = state.get("reading", {})
     return {
-        "counts": {"today": today_pending, "queue": queue_pending, "savedPapers": saved_papers, "savedImages": saved_images},
+        "counts": {
+            "today": today_pending,
+            "queue": queue_pending,
+            "savedPapers": saved_papers,
+            "savedImages": saved_images,
+        },
         "progress": {"todayHandled": max(today_total - today_pending, 0), "todayTotal": today_total},
-        "stats": {"browsedArticles": viewed_count, "savedPapers": saved_papers, "savedImages": saved_images, "deepReadCount": 0},
+        "stats": {
+            "browsedArticles": viewed_count,
+            "savedPapers": saved_papers,
+            "savedImages": saved_images,
+            "deepReadCount": 0,
+        },
         "subscriptions": subscriptions,
         "journals": journals,
         "lastSyncedAt": last_synced_at,
+        "archive": {
+            "articleCount": len(articles),
+            "latestArchiveSeq": max_archive_seq(articles),
+        },
+        "reading": {
+            "today": reading.get("today", empty_resume_state()),
+            "queue": reading.get("queue", empty_resume_state()),
+            "lastSeenArchiveSeq": reading.get("last_seen_archive_seq", 0),
+        },
     }
