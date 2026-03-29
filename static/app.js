@@ -13,6 +13,8 @@ const state = {
     journal: "all",
     savedImages: [],
   },
+  savedImageKeys: new Set(),
+  savedImageIndexLoaded: false,
   imageMeta: {},
   imageAssets: {},
   imageAssetPending: {},
@@ -121,6 +123,14 @@ function uniqueJournals(items = [], selector) {
   return [...new Set(items.map((item) => selector(item)).filter(Boolean))].sort((left, right) =>
     String(left).localeCompare(String(right), "zh-CN"),
   );
+}
+
+function figureKey(articleId, figureIndex) {
+  return `${articleId}:${figureIndex}`;
+}
+
+function isFigureSaved(articleId, figureIndex) {
+  return state.savedImageKeys.has(figureKey(articleId, figureIndex));
 }
 
 function getAspectRatio(meta) {
@@ -255,6 +265,17 @@ function renderModeTabs() {
 async function loadBootstrap() {
   state.overview = await api("/api/bootstrap");
   renderModeTabs();
+  await ensureSavedImageIndexLoaded();
+}
+
+async function ensureSavedImageIndexLoaded(force = false) {
+  if (state.savedImageIndexLoaded && !force) return;
+  const response = await api("/api/my/images");
+  state.savedImageKeys = new Set(response.items.map((item) => item.key));
+  state.savedImageIndexLoaded = true;
+  if (state.screen === "collection" && state.collection.tab === "images") {
+    state.collection.savedImages = response.items;
+  }
 }
 
 async function ensureFeedPage(mode) {
@@ -374,6 +395,7 @@ function renderReader() {
     .join("");
   const figureCount = figures.length ? `${feed.activeFigure + 1} / ${figures.length}` : "";
   const flow = readerFlowProgress(feed);
+  const activeFigureSaved = activeFigure ? isFigureSaved(detail.id, activeFigure.index) : false;
 
   refs.readerPanel.innerHTML = `
     <article class="reader-card ${feed.expanded ? "detail-open" : ""}" id="readerCard">
@@ -399,6 +421,7 @@ function renderReader() {
             activeFigure
               ? `
             <div class="figure-stage" data-reader-figure="true">
+              ${activeFigureSaved ? '<span class="saved-star">★</span>' : ""}
               <span class="figure-stage-count">${escapeHtml(figureCount)}</span>
               <div class="figure-frame" id="readerFigureFrame">
                 <canvas id="readerFigureCanvas" class="figure-canvas" data-image-url="${escapeHtml(activeFigure.image_url)}" aria-label="${escapeHtml(activeFigure.title || "论文插图")}"></canvas>
@@ -551,6 +574,7 @@ function renderReaderPreview() {
       <p class="reader-preview-caption">${escapeHtml(figure.title || `Figure ${preview.figureIndex + 1}`)}</p>
       <div class="reader-preview-stage" id="readerPreviewStage">
         <div class="reader-preview-frame" id="readerPreviewFrame">
+          ${isFigureSaved(detail.id, figure.index) ? '<span class="saved-star preview-star">★</span>' : ""}
           <img id="readerPreviewImage" class="reader-preview-image" src="${escapeHtml(figure.image_url)}" alt="${escapeHtml(figure.title || detail.title || "科研图片")}" />
         </div>
       </div>
@@ -593,6 +617,7 @@ function bindReaderPreviewEvents() {
   const pointers = new Map();
   let dragState = null;
   let pinchState = null;
+  let lastTapAt = 0;
 
   const clampScale = (value) => Math.max(1, Math.min(value, 4));
   const distanceBetween = (left, right) => Math.hypot(right.x - left.x, right.y - left.y);
@@ -661,6 +686,23 @@ function bindReaderPreviewEvents() {
     const deltaY = currentPoint.y - dragState.startY;
     dragState = null;
 
+    if (preview.scale <= 1.01 && Math.abs(deltaX) < 12 && Math.abs(deltaY) < 12) {
+      const now = event.timeStamp;
+      if (now - lastTapAt < 280) {
+        lastTapAt = 0;
+        const item = figureItemFromPreview(preview.detail, preview.figureIndex);
+        if (item) {
+          void toggleImageSave(item).then(() => {
+            preview.message = "图片收藏已切换";
+            renderReaderPreview();
+          });
+        }
+      } else {
+        lastTapAt = now;
+      }
+      return;
+    }
+
     if (preview.scale > 1.01) return;
     if (Math.abs(deltaX) < 42 || Math.abs(deltaX) < Math.abs(deltaY)) return;
     const figures = preview.detail?.figures || [];
@@ -682,15 +724,6 @@ function bindReaderPreviewEvents() {
       handlePointerEnd(event);
     }
   });
-
-  stage.addEventListener("dblclick", async (event) => {
-    event.preventDefault();
-    const item = figureItemFromPreview(preview.detail, preview.figureIndex);
-    if (!item) return;
-    await toggleImageSave(item);
-    preview.message = "图片收藏已切换";
-    renderReaderPreview();
-  });
 }
 
 function bindReaderEvents(figures) {
@@ -708,6 +741,8 @@ function bindReaderEvents(figures) {
   if (mediaStage && figureStage) {
     let startX = 0;
     let startY = 0;
+    let previewTapTimer = null;
+    let lastTapAt = 0;
     mediaStage.addEventListener("pointerdown", (event) => {
       startX = event.clientX;
       startY = event.clientY;
@@ -719,7 +754,27 @@ function bindReaderEvents(figures) {
       startY = 0;
 
       if (Math.abs(delta) < 12 && Math.abs(deltaY) < 12) {
-        openReaderPreview(detailSnapshotFromFeed(feed), feed.activeFigure);
+        const detail = detailSnapshotFromFeed(feed);
+        const item = figureItemFromPreview(detail, feed.activeFigure);
+        const now = event.timeStamp;
+        if (item && now - lastTapAt < 280) {
+          lastTapAt = 0;
+          if (previewTapTimer) {
+            clearTimeout(previewTapTimer);
+            previewTapTimer = null;
+          }
+          await toggleImageSave(item);
+          renderReader();
+          return;
+        }
+        lastTapAt = now;
+        if (previewTapTimer) {
+          clearTimeout(previewTapTimer);
+        }
+        previewTapTimer = window.setTimeout(() => {
+          openReaderPreview(detailSnapshotFromFeed(feed), feed.activeFigure);
+          previewTapTimer = null;
+        }, 220);
         return;
       }
 
@@ -905,7 +960,7 @@ function renderImages() {
                   <article class="image-tile" data-image-key="${escapeHtml(item.key)}">
                     <div class="image-tile-media" style="aspect-ratio:${ratio}">
                       <img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.title || "科研图片")}" loading="lazy" />
-                      ${item.saved ? '<span class="saved-mark">已收藏</span>' : ""}
+                      ${item.saved ? '<span class="saved-star image-tile-star">★</span>' : ""}
                     </div>
                   </article>
                 `;
@@ -930,12 +985,43 @@ function renderImages() {
   });
 
   refs.imagePanel.querySelectorAll("[data-image-key]").forEach((tile) => {
-    tile.addEventListener("click", () => openImageModal(tile.dataset.imageKey, state.images.items));
-    tile.addEventListener("dblclick", async () => {
+    let startX = 0;
+    let startY = 0;
+    let openTimer = null;
+    let lastTapAt = 0;
+
+    tile.addEventListener("pointerdown", (event) => {
+      startX = event.clientX;
+      startY = event.clientY;
+    });
+
+    tile.addEventListener("pointerup", async (event) => {
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+      if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) return;
+
       const item = state.images.items.find((entry) => entry.key === tile.dataset.imageKey);
-      if (item) {
+      if (!item) return;
+      const now = event.timeStamp;
+      if (now - lastTapAt < 280) {
+        lastTapAt = 0;
+        if (openTimer) {
+          clearTimeout(openTimer);
+          openTimer = null;
+        }
         await toggleImageSave(item);
+        renderImages();
+        return;
       }
+
+      lastTapAt = now;
+      if (openTimer) {
+        clearTimeout(openTimer);
+      }
+      openTimer = window.setTimeout(() => {
+        openImageModal(tile.dataset.imageKey, state.images.items);
+        openTimer = null;
+      }, 220);
     });
   });
 
@@ -953,7 +1039,23 @@ async function toggleImageSave(item) {
       imageUrl: item.image_url,
     }),
   });
-  item.saved = !item.saved;
+  const key = item.key || figureKey(item.article_id, item.figure_index);
+  const nextSaved = !state.savedImageKeys.has(key);
+  if (nextSaved) {
+    state.savedImageKeys.add(key);
+  } else {
+    state.savedImageKeys.delete(key);
+  }
+  item.saved = nextSaved;
+  state.images.items.forEach((entry) => {
+    if (entry.key === key) {
+      entry.saved = nextSaved;
+    }
+  });
+  state.collection.savedImages = nextSaved
+    ? state.collection.savedImages
+    : state.collection.savedImages.filter((entry) => entry.key !== key);
+  state.savedImageIndexLoaded = true;
   await loadBootstrap();
   rerenderCurrentScreen();
 }
