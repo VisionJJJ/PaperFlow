@@ -21,6 +21,15 @@ from backend.service import (
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 
+@app.after_request
+def disable_cache(response):
+    if request.path == "/" or request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 @app.route("/")
 def index():
     return app.send_static_file("index.html")

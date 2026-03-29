@@ -83,12 +83,31 @@ function createImageState() {
 }
 
 function attachTouchGuards() {
+  let lastTouchStart = 0;
   let lastTouchEnd = 0;
   const preventDefault = (event) => {
     event.preventDefault();
   };
 
   document.addEventListener("dblclick", preventDefault, { passive: false });
+  document.addEventListener(
+    "touchstart",
+    (event) => {
+      const inReaderPreview = event.target.closest?.("#readerPreviewStage");
+      if (event.touches.length > 1) {
+        if (!inReaderPreview) {
+          event.preventDefault();
+        }
+        return;
+      }
+      const now = Date.now();
+      if (now - lastTouchStart < 320) {
+        event.preventDefault();
+      }
+      lastTouchStart = now;
+    },
+    { passive: false, capture: true },
+  );
   document.addEventListener(
     "touchend",
     (event) => {
@@ -103,6 +122,31 @@ function attachTouchGuards() {
 
   ["gesturestart", "gesturechange", "gestureend"].forEach((name) => {
     document.addEventListener(name, preventDefault, { passive: false });
+  });
+}
+
+let viewportSyncFrame = 0;
+
+function syncViewportMetrics() {
+  const viewport = window.visualViewport;
+  const width = Math.max(
+    1,
+    Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth || 0),
+  );
+  const height = Math.max(
+    1,
+    Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0),
+  );
+  document.documentElement.style.setProperty("--app-width", `${width}px`);
+  document.documentElement.style.setProperty("--app-height", `${height}px`);
+}
+
+function scheduleViewportSync() {
+  if (viewportSyncFrame) return;
+  viewportSyncFrame = window.requestAnimationFrame(() => {
+    viewportSyncFrame = 0;
+    syncViewportMetrics();
+    rerenderCurrentScreen();
   });
 }
 
@@ -1499,6 +1543,7 @@ function attachGlobalEvents() {
 }
 
 async function init() {
+  syncViewportMetrics();
   attachTouchGuards();
   attachGlobalEvents();
   renderBottomNav();
@@ -1506,6 +1551,9 @@ async function init() {
   await switchMode("today");
 }
 
-window.addEventListener("resize", rerenderCurrentScreen);
+window.addEventListener("resize", scheduleViewportSync);
+window.addEventListener("orientationchange", scheduleViewportSync);
+window.visualViewport?.addEventListener("resize", scheduleViewportSync);
+window.visualViewport?.addEventListener("scroll", scheduleViewportSync);
 
 init();

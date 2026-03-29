@@ -10,6 +10,8 @@
   --shadow: 0 10px 28px rgba(41, 25, 12, 0.08);
   --radius: 20px;
   --bottom-nav-height: 44px;
+  --app-width: 100vw;
+  --app-height: 100vh;
 }
 
 * {
@@ -56,8 +58,8 @@ a {
 }
 
 .app-shell {
-  width: 100vw;
-  height: 100dvh;
+  width: var(--app-width);
+  height: var(--app-height);
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   overflow: hidden;
@@ -830,7 +832,7 @@ a {
   position: relative;
   z-index: 1;
   width: min(920px, calc(100vw - 20px));
-  max-height: calc(100dvh - 20px);
+  max-height: calc(var(--app-height) - 20px);
   margin: 10px auto;
   padding: 16px;
   overflow: auto;
@@ -1059,7 +1061,7 @@ a {
 
   .reader-preview-card {
     width: calc(100vw - 12px);
-    height: calc(100dvh - 12px);
+    height: calc(var(--app-height) - 12px);
     margin: 6px auto;
     padding: 10px;
     border-radius: 18px;
