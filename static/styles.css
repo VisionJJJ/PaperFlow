@@ -29,6 +29,7 @@ body {
   font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  touch-action: manipulation;
 }
 
 body {
@@ -60,6 +61,7 @@ a {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   overflow: hidden;
+  touch-action: manipulation;
 }
 
 .app-main {
@@ -80,6 +82,7 @@ a {
 .screen-panel {
   min-height: 0;
   height: 100%;
+  touch-action: manipulation;
 }
 
 .mode-tabs {
@@ -369,7 +372,7 @@ a {
   background: #ffffff;
   border-radius: 16px;
   overflow: hidden;
-  touch-action: pan-x pinch-zoom;
+  touch-action: manipulation;
 }
 
 .figure-canvas {
@@ -748,6 +751,7 @@ a {
 .image-tile {
   break-inside: avoid;
   margin-bottom: 10px;
+  touch-action: manipulation;
 }
 
 .image-tile-media {

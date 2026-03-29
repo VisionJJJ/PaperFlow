@@ -82,6 +82,30 @@ function createImageState() {
   };
 }
 
+function attachTouchGuards() {
+  let lastTouchEnd = 0;
+  const preventDefault = (event) => {
+    event.preventDefault();
+  };
+
+  document.addEventListener("dblclick", preventDefault, { passive: false });
+  document.addEventListener(
+    "touchend",
+    (event) => {
+      const now = Date.now();
+      if (now - lastTouchEnd < 320) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    },
+    { passive: false },
+  );
+
+  ["gesturestart", "gesturechange", "gestureend"].forEach((name) => {
+    document.addEventListener(name, preventDefault, { passive: false });
+  });
+}
+
 async function api(url, options = {}) {
   const response = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -1475,6 +1499,7 @@ function attachGlobalEvents() {
 }
 
 async function init() {
+  attachTouchGuards();
   attachGlobalEvents();
   renderBottomNav();
   await loadBootstrap();
