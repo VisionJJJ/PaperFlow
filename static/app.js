@@ -393,24 +393,50 @@ function renderReader() {
         <div class="keyword-row">${keywords || '<span class="keyword-pill muted">暂无关键词</span>'}</div>
       </header>
 
-      <section class="reader-media" data-media-stage="true">
-        ${
-          activeFigure
-            ? `
-          <div class="figure-stage" data-reader-figure="true">
-            <span class="figure-stage-count">${escapeHtml(figureCount)}</span>
-            <div class="figure-frame" id="readerFigureFrame">
-              <canvas id="readerFigureCanvas" class="figure-canvas" data-image-url="${escapeHtml(activeFigure.image_url)}" aria-label="${escapeHtml(activeFigure.title || "论文插图")}"></canvas>
+      <section class="reader-stage ${feed.expanded ? "detail-open" : ""}">
+        <section class="reader-media" data-media-stage="true">
+          ${
+            activeFigure
+              ? `
+            <div class="figure-stage" data-reader-figure="true">
+              <span class="figure-stage-count">${escapeHtml(figureCount)}</span>
+              <div class="figure-frame" id="readerFigureFrame">
+                <canvas id="readerFigureCanvas" class="figure-canvas" data-image-url="${escapeHtml(activeFigure.image_url)}" aria-label="${escapeHtml(activeFigure.title || "论文插图")}"></canvas>
+              </div>
             </div>
-          </div>
-        `
-            : `
-          <div class="figure-empty">
-            <p>暂未获取插图</p>
-            <a class="primary-link" href="${escapeHtml(detail.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
-          </div>
-        `
-        }
+          `
+              : `
+            <div class="figure-empty">
+              <p>暂未获取插图</p>
+              <a class="primary-link" href="${escapeHtml(detail.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
+            </div>
+          `
+          }
+        </section>
+
+        <section class="detail-section ${feed.expanded ? "open" : ""}">
+          ${
+            feed.expanded
+              ? `
+            <div class="detail-list">
+              <div class="detail-item">
+                <strong>摘要</strong>
+                <p>${escapeHtml(detail.abstract || "暂无")}</p>
+              </div>
+              <div class="detail-item">
+                <strong>第一单位</strong>
+                <p>${escapeHtml(detail.first_author_affiliation || "暂无")}</p>
+              </div>
+              <div class="detail-item">
+                <strong>通讯作者</strong>
+                <p>${escapeHtml(correspondingAuthor(detail))}</p>
+              </div>
+              <a class="primary-link" href="${escapeHtml(detail.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
+            </div>
+          `
+              : ""
+          }
+        </section>
       </section>
 
       ${
@@ -426,30 +452,6 @@ function renderReader() {
       `
           : ""
       }
-
-      <section class="detail-section ${feed.expanded ? "open" : ""}">
-        ${
-          feed.expanded
-            ? `
-          <div class="detail-list">
-            <div class="detail-item">
-              <strong>摘要</strong>
-              <p>${escapeHtml(detail.abstract || "暂无")}</p>
-            </div>
-            <div class="detail-item">
-              <strong>第一单位</strong>
-              <p>${escapeHtml(detail.first_author_affiliation || "暂无")}</p>
-            </div>
-            <div class="detail-item">
-              <strong>通讯作者</strong>
-              <p>${escapeHtml(correspondingAuthor(detail))}</p>
-            </div>
-            <a class="primary-link" href="${escapeHtml(detail.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
-          </div>
-        `
-            : ""
-        }
-      </section>
 
       <footer class="reader-footer-shell">
         <div class="action-bar">
