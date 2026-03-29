@@ -417,7 +417,7 @@ function renderReader() {
         detail.state?.status === "saved"
           ? `
         <section class="note-strip">
-          <textarea id="noteInput" rows="2" placeholder="补一句备注，默认进入未分类。">${escapeHtml(detail.state?.note || "")}</textarea>
+          <textarea id="noteInput" rows="1" placeholder="补一句备注，默认进入未分类。">${escapeHtml(detail.state?.note || "")}</textarea>
           <div class="note-actions">
             <button class="secondary-button" type="button" disabled>专栏归类</button>
             <button class="secondary-button" data-action="save-note" type="button">保存备注</button>

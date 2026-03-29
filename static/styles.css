@@ -420,10 +420,12 @@ a {
 
 .note-strip {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid rgba(216, 169, 12, 0.35);
-  border-radius: 18px;
+  border-radius: 14px;
   background: rgba(242, 201, 76, 0.14);
 }
 
@@ -433,9 +435,14 @@ a {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 12px;
+  padding: 8px 10px;
   background: rgba(255, 255, 255, 0.9);
   resize: none;
+}
+
+.note-strip textarea {
+  min-height: 42px;
+  max-height: 52px;
 }
 
 .detail-section {
@@ -499,6 +506,17 @@ a {
   border-color: #d8a90c;
   color: #3e2d00;
   font-weight: 700;
+}
+
+.note-actions {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.note-actions .secondary-button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 0.7rem;
 }
 
 .action-bar {
@@ -889,6 +907,24 @@ a {
   .keyword-pill {
     font-size: 0.68rem;
     padding: 4px 7px;
+  }
+
+  .note-strip {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .note-strip textarea {
+    min-height: 38px;
+    max-height: 44px;
+    padding: 7px 9px;
+  }
+
+  .note-actions .secondary-button {
+    min-height: 28px;
+    padding: 0 8px;
+    font-size: 0.64rem;
   }
 
   .figure-stage-count {
