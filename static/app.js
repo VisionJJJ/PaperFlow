@@ -245,6 +245,12 @@ function getAspectRatio(meta) {
   return `${meta.width} / ${meta.height}`;
 }
 
+function domSafeId(value) {
+  return String(value || "")
+    .replaceAll(":", "-")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-");
+}
+
 function correspondingAuthor(detail) {
   return detail?.corresponding_author || "暂无";
 }
@@ -885,21 +891,18 @@ function bindReaderEvents(figures) {
     let startY = 0;
     let previewTapTimer = null;
     let lastTapAt = 0;
-    mediaStage.addEventListener("pointerdown", (event) => {
-      startX = event.clientX;
-      startY = event.clientY;
-    });
-    mediaStage.addEventListener("pointerup", async (event) => {
-      const delta = event.clientX - startX;
-      const deltaY = event.clientY - startY;
+    let lastTouchHandledAt = 0;
+
+    const handleMediaGesture = async (clientX, clientY, timeStamp) => {
+      const delta = clientX - startX;
+      const deltaY = clientY - startY;
       startX = 0;
       startY = 0;
 
       if (Math.abs(delta) < 12 && Math.abs(deltaY) < 12) {
         const detail = detailSnapshotFromFeed(feed);
         const item = figureItemFromPreview(detail, feed.activeFigure);
-        const now = event.timeStamp;
-        if (item && now - lastTapAt < 280) {
+        if (item && timeStamp - lastTapAt < 280) {
           lastTapAt = 0;
           if (previewTapTimer) {
             clearTimeout(previewTapTimer);
@@ -909,7 +912,7 @@ function bindReaderEvents(figures) {
           renderReader();
           return;
         }
-        lastTapAt = now;
+        lastTapAt = timeStamp;
         if (previewTapTimer) {
           clearTimeout(previewTapTimer);
         }
@@ -926,6 +929,35 @@ function bindReaderEvents(figures) {
         feed.activeFigure = nextIndex;
         renderReader();
       }
+    };
+
+    mediaStage.addEventListener("pointerdown", (event) => {
+      startX = event.clientX;
+      startY = event.clientY;
+    });
+    mediaStage.addEventListener("pointerup", async (event) => {
+      if (event.pointerType === "touch" && event.timeStamp - lastTouchHandledAt < 420) {
+        return;
+      }
+      await handleMediaGesture(event.clientX, event.clientY, event.timeStamp);
+    });
+
+    mediaStage.addEventListener(
+      "touchstart",
+      (event) => {
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+        startX = touch.clientX;
+        startY = touch.clientY;
+      },
+      { passive: true },
+    );
+
+    mediaStage.addEventListener("touchend", async (event) => {
+      const touch = event.changedTouches?.[0];
+      if (!touch) return;
+      lastTouchHandledAt = event.timeStamp || performance.now();
+      await handleMediaGesture(touch.clientX, touch.clientY, lastTouchHandledAt);
     });
   }
 
@@ -1102,10 +1134,18 @@ function renderImages() {
           ? state.images.items
               .map((item) => {
                 const ratio = getAspectRatio(state.imageMeta[item.image_url]);
+                const safeId = domSafeId(item.key);
                 return `
                   <article class="image-tile" data-image-key="${escapeHtml(item.key)}">
-                    <div class="image-tile-media" style="aspect-ratio:${ratio}">
-                      <img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.title || "科研图片")}" loading="lazy" />
+                    <div class="image-tile-media image-tile-stage" style="aspect-ratio:${ratio}">
+                      <div class="image-tile-frame" id="imageTileFrame-${safeId}">
+                        <canvas
+                          id="imageTileCanvas-${safeId}"
+                          class="figure-canvas"
+                          data-image-url="${escapeHtml(item.image_url)}"
+                          aria-label="${escapeHtml(item.title || "科研图片")}"
+                        ></canvas>
+                      </div>
                       ${item.saved ? '<span class="saved-star image-tile-star">★</span>' : ""}
                     </div>
                   </article>
@@ -1168,6 +1208,17 @@ function renderImages() {
         openImageModal(tile.dataset.imageKey, state.images.items);
         openTimer = null;
       }, 220);
+    });
+  });
+
+  requestAnimationFrame(() => {
+    state.images.items.forEach((item) => {
+      const safeId = domSafeId(item.key);
+      const canvasId = `imageTileCanvas-${safeId}`;
+      const frameId = `imageTileFrame-${safeId}`;
+      if (document.getElementById(canvasId) && document.getElementById(frameId)) {
+        void paintContainCanvas(canvasId, frameId, item.image_url);
+      }
     });
   });
 
