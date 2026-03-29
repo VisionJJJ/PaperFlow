@@ -14,6 +14,14 @@ const state = {
     savedImages: [],
   },
   imageMeta: {},
+  imageAssets: {},
+  imageAssetPending: {},
+  readerPreview: {
+    open: false,
+    detail: null,
+    figureIndex: 0,
+    message: "",
+  },
 };
 
 const SUGGESTED_SUBSCRIPTIONS = [
@@ -37,6 +45,8 @@ const refs = {
   queueCount: document.getElementById("queueCount"),
   imageModal: document.getElementById("imageModal"),
   modalBody: document.getElementById("modalBody"),
+  readerPreviewModal: document.getElementById("readerPreviewModal"),
+  readerPreviewBody: document.getElementById("readerPreviewBody"),
 };
 
 function createFeedState() {
@@ -139,6 +149,75 @@ function primeImageMeta(url) {
   image.src = url;
 }
 
+function loadImageAsset(url) {
+  if (!url) return Promise.resolve(null);
+  if (state.imageAssets[url]) return Promise.resolve(state.imageAssets[url]);
+  if (state.imageAssetPending[url]) return state.imageAssetPending[url];
+
+  state.imageAssetPending[url] = new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      state.imageAssets[url] = image;
+      if (!state.imageMeta[url]) {
+        state.imageMeta[url] = {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        };
+      }
+      delete state.imageAssetPending[url];
+      resolve(image);
+    };
+    image.onerror = () => {
+      delete state.imageAssetPending[url];
+      resolve(null);
+    };
+    image.src = url;
+  });
+
+  return state.imageAssetPending[url];
+}
+
+async function paintContainCanvas(canvasId, frameId, url) {
+  const canvas = document.getElementById(canvasId);
+  const frame = document.getElementById(frameId);
+  if (!canvas || !frame || !url) return;
+
+  const asset = await loadImageAsset(url);
+  if (!asset) return;
+  if (!document.body.contains(canvas) || canvas.dataset.imageUrl !== url) return;
+
+  const width = Math.max(1, Math.round(frame.clientWidth));
+  const height = Math.max(1, Math.round(frame.clientHeight));
+  if (!width || !height) return;
+
+  const devicePixelRatio = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(width * devicePixelRatio));
+  canvas.height = Math.max(1, Math.round(height * devicePixelRatio));
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+
+  const padding = Math.max(8, Math.round(Math.min(width, height) * 0.04));
+  const drawableWidth = Math.max(1, width - padding * 2);
+  const drawableHeight = Math.max(1, height - padding * 2);
+  const scale = Math.min(drawableWidth / asset.naturalWidth, drawableHeight / asset.naturalHeight);
+  const drawWidth = Math.max(1, Math.round(asset.naturalWidth * scale));
+  const drawHeight = Math.max(1, Math.round(asset.naturalHeight * scale));
+  const offsetX = Math.round((width - drawWidth) / 2);
+  const offsetY = Math.round((height - drawHeight) / 2);
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(asset, offsetX, offsetY, drawWidth, drawHeight);
+}
+
 function primeFigureSet(figures = []) {
   figures.forEach((figure) => {
     if (figure?.image_url) {
@@ -155,6 +234,9 @@ function renderBottomNav() {
   refs.collectionScreen.classList.toggle("hidden", state.screen !== "collection");
   refs.subscriptionScreen.classList.toggle("hidden", state.screen !== "subscriptions");
   refs.myScreen.classList.toggle("hidden", state.screen !== "my");
+  if (state.screen !== "home") {
+    closeReaderPreview();
+  }
 }
 
 function renderModeTabs() {
@@ -273,19 +355,10 @@ function renderReader() {
 
   const figures = detail.figures || [];
   const activeFigure = figures[feed.activeFigure] || null;
-  const activeMeta = activeFigure ? state.imageMeta[activeFigure.image_url] : null;
   const keywords = (detail.keywords || [])
     .map((keyword) => `<span class="keyword-pill">${escapeHtml(keyword)}</span>`)
     .join("");
-  const thumbs = figures
-    .map(
-      (figure, index) => `
-        <button class="thumb-button ${index === feed.activeFigure ? "active" : ""}" data-figure-index="${index}" type="button">
-          <img src="${escapeHtml(figure.image_url)}" alt="${escapeHtml(figure.title || `Figure ${index + 1}`)}" loading="lazy" />
-        </button>
-      `,
-    )
-    .join("");
+  const figureCount = figures.length ? `${feed.activeFigure + 1} / ${figures.length}` : "";
 
   refs.readerPanel.innerHTML = `
     <article class="reader-card" id="readerCard">
@@ -309,12 +382,15 @@ function renderReader() {
         ${
           activeFigure
             ? `
-          <div class="figure-stage">
-            <div class="figure-frame" style="aspect-ratio:${getAspectRatio(activeMeta)}">
-              <img class="figure-image" src="${escapeHtml(activeFigure.image_url)}" alt="${escapeHtml(activeFigure.title || "论文插图")}" />
+          <div class="figure-stage" data-reader-figure="true">
+            <div class="figure-frame" id="readerFigureFrame">
+              <canvas id="readerFigureCanvas" class="figure-canvas" data-image-url="${escapeHtml(activeFigure.image_url)}" aria-label="${escapeHtml(activeFigure.title || "论文插图")}"></canvas>
+            </div>
+            <div class="figure-stage-meta">
+              <span>${escapeHtml(activeFigure.title || `Figure ${feed.activeFigure + 1}`)}</span>
+              ${figureCount ? `<strong>${escapeHtml(figureCount)}</strong>` : ""}
             </div>
           </div>
-          ${figures.length ? `<div class="thumb-row">${thumbs}</div>` : ""}
         `
             : `
           <div class="figure-empty">
@@ -340,7 +416,6 @@ function renderReader() {
       }
 
       <section class="detail-section ${feed.expanded ? "open" : ""}">
-        <button class="detail-toggle" data-action="toggle-detail" type="button">${feed.expanded ? "收起详情" : "展开详情"}</button>
         ${
           feed.expanded
             ? `
@@ -364,29 +439,156 @@ function renderReader() {
         }
       </section>
 
-      <footer class="action-bar">
-        <button class="action-button warn" data-action="dismissed" type="button">不感兴趣</button>
-        <button class="action-button" data-action="previous" type="button" ${feed.history.length ? "" : "disabled"}>上一条</button>
-        <button class="action-button ${detail.state?.status === "saved" ? "saved" : ""}" data-action="saved" type="button" ${detail.state?.status === "saved" ? "disabled" : ""}>${detail.state?.status === "saved" ? "已收藏" : "收藏论文"}</button>
-        <button class="action-button primary" data-action="next" type="button">下一条</button>
+      <footer class="reader-footer-shell">
+        <div class="action-bar">
+          <button class="action-button icon-button ${feed.expanded ? "open" : ""}" data-action="toggle-detail" type="button" aria-label="${feed.expanded ? "收起详情" : "展开详情"}" title="${feed.expanded ? "收起详情" : "展开详情"}">
+            <span class="detail-chevron">⌄</span>
+          </button>
+          <button class="action-button warn" data-action="dismissed" type="button">不感兴趣</button>
+          <button class="action-button" data-action="previous" type="button" ${feed.history.length ? "" : "disabled"}>上一条</button>
+          <button class="action-button ${detail.state?.status === "saved" ? "saved" : ""}" data-action="saved" type="button" ${detail.state?.status === "saved" ? "disabled" : ""}>${detail.state?.status === "saved" ? "已收藏" : "收藏论文"}</button>
+          <button class="action-button primary" data-action="next" type="button">下一条</button>
+        </div>
       </footer>
     </article>
   `;
 
   bindReaderEvents(figures);
+  if (activeFigure?.image_url) {
+    requestAnimationFrame(() => {
+      void paintContainCanvas("readerFigureCanvas", "readerFigureFrame", activeFigure.image_url);
+    });
+  }
   maybePrefetchNext();
+}
+
+function detailSnapshotFromFeed(feed) {
+  const id = feed.ids[feed.currentIndex];
+  const detail = id ? feed.details[id] : null;
+  if (!detail) return null;
+  return {
+    id: detail.id,
+    title: detail.title || detail.rss_title || "Untitled",
+    journal_title: detail.journal_title || detail.subscription_name || "Nature",
+    published_at: detail.published_at,
+    article_url: detail.article_url,
+    figures: (detail.figures || []).map((figure) => ({ ...figure })),
+  };
+}
+
+function figureItemFromPreview(detail, figureIndex) {
+  const figure = detail?.figures?.[figureIndex];
+  if (!detail || !figure) return null;
+  return {
+    key: `${detail.id}:${figure.index}`,
+    article_id: detail.id,
+    figure_index: figure.index,
+    image_url: figure.image_url,
+    title: figure.title,
+    article_title: detail.title,
+    journal_title: detail.journal_title,
+    published_at: detail.published_at,
+    article_url: detail.article_url,
+  };
+}
+
+function openReaderPreview(detail, figureIndex) {
+  if (!detail?.figures?.length) return;
+  state.readerPreview = {
+    open: true,
+    detail,
+    figureIndex: Math.max(0, Math.min(figureIndex, detail.figures.length - 1)),
+    message: "",
+  };
+  renderReaderPreview();
+}
+
+function closeReaderPreview() {
+  state.readerPreview.open = false;
+  state.readerPreview.detail = null;
+  state.readerPreview.figureIndex = 0;
+  state.readerPreview.message = "";
+  refs.readerPreviewModal.classList.add("hidden");
+}
+
+function renderReaderPreview() {
+  const preview = state.readerPreview;
+  const detail = preview.detail;
+  const figure = detail?.figures?.[preview.figureIndex];
+  if (!preview.open || !detail || !figure) {
+    refs.readerPreviewModal.classList.add("hidden");
+    refs.readerPreviewBody.innerHTML = "";
+    return;
+  }
+
+  refs.readerPreviewBody.innerHTML = `
+    <section class="reader-preview-shell">
+      <div class="reader-preview-meta">
+        <span>${escapeHtml(detail.journal_title || "Nature")} · ${escapeHtml(formatDate(detail.published_at))}</span>
+        <strong>${escapeHtml(String(preview.figureIndex + 1))} / ${escapeHtml(String(detail.figures.length))}</strong>
+      </div>
+      <h3 class="reader-preview-title">${escapeHtml(detail.title || "")}</h3>
+      <p class="reader-preview-caption">${escapeHtml(figure.title || `Figure ${preview.figureIndex + 1}`)}</p>
+      <div class="reader-preview-stage" id="readerPreviewStage">
+        <div class="reader-preview-frame" id="readerPreviewFrame">
+          <canvas id="readerPreviewCanvas" class="figure-canvas" data-image-url="${escapeHtml(figure.image_url)}"></canvas>
+        </div>
+      </div>
+      <div class="reader-preview-hint">
+        <span>左右滑动切换图片</span>
+        <span>双击收藏</span>
+        ${preview.message ? `<strong>${escapeHtml(preview.message)}</strong>` : ""}
+      </div>
+    </section>
+  `;
+
+  refs.readerPreviewModal.classList.remove("hidden");
+  requestAnimationFrame(() => {
+    void paintContainCanvas("readerPreviewCanvas", "readerPreviewFrame", figure.image_url);
+  });
+  bindReaderPreviewEvents();
+}
+
+function bindReaderPreviewEvents() {
+  const stage = document.getElementById("readerPreviewStage");
+  if (!stage) return;
+
+  const preview = state.readerPreview;
+  let startX = 0;
+  let startY = 0;
+
+  stage.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+  });
+
+  stage.addEventListener("pointerup", (event) => {
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    startX = 0;
+    startY = 0;
+    if (Math.abs(deltaX) < 42 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+    const figures = preview.detail?.figures || [];
+    const nextIndex = deltaX < 0 ? Math.min(preview.figureIndex + 1, figures.length - 1) : Math.max(preview.figureIndex - 1, 0);
+    if (nextIndex !== preview.figureIndex) {
+      preview.figureIndex = nextIndex;
+      preview.message = "";
+      renderReaderPreview();
+    }
+  });
+
+  stage.addEventListener("dblclick", async (event) => {
+    event.preventDefault();
+    const item = figureItemFromPreview(preview.detail, preview.figureIndex);
+    if (!item) return;
+    await toggleImageSave(item);
+    preview.message = "图片收藏已切换";
+    renderReaderPreview();
+  });
 }
 
 function bindReaderEvents(figures) {
   const feed = currentFeed();
-
-  refs.readerPanel.querySelectorAll("[data-figure-index]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      feed.activeFigure = Number(button.dataset.figureIndex);
-      renderReader();
-    });
-  });
 
   refs.readerPanel.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", async (event) => {
@@ -396,18 +598,27 @@ function bindReaderEvents(figures) {
   });
 
   const mediaStage = refs.readerPanel.querySelector("[data-media-stage]");
-  if (mediaStage && figures.length > 1) {
+  const figureStage = refs.readerPanel.querySelector("[data-reader-figure]");
+  if (mediaStage && figureStage) {
     let startX = 0;
+    let startY = 0;
     mediaStage.addEventListener("pointerdown", (event) => {
       startX = event.clientX;
+      startY = event.clientY;
     });
-    mediaStage.addEventListener("pointerup", (event) => {
+    mediaStage.addEventListener("pointerup", async (event) => {
       const delta = event.clientX - startX;
-      if (Math.abs(delta) < 36) return;
-      const nextIndex =
-        delta < 0
-          ? Math.min(feed.activeFigure + 1, figures.length - 1)
-          : Math.max(feed.activeFigure - 1, 0);
+      const deltaY = event.clientY - startY;
+      startX = 0;
+      startY = 0;
+
+      if (Math.abs(delta) < 12 && Math.abs(deltaY) < 12) {
+        openReaderPreview(detailSnapshotFromFeed(feed), feed.activeFigure);
+        return;
+      }
+
+      if (Math.abs(delta) < 36 || Math.abs(delta) < Math.abs(deltaY) || figures.length <= 1) return;
+      const nextIndex = delta < 0 ? Math.min(feed.activeFigure + 1, figures.length - 1) : Math.max(feed.activeFigure - 1, 0);
       if (nextIndex !== feed.activeFigure) {
         feed.activeFigure = nextIndex;
         renderReader();
@@ -486,6 +697,7 @@ async function handleReaderAction(action) {
   }
 
   if (action === "dismissed") {
+    closeReaderPreview();
     await api(`/api/articles/${detail.id}/action`, {
       method: "POST",
       body: JSON.stringify({ action: "dismissed" }),
@@ -494,6 +706,7 @@ async function handleReaderAction(action) {
   }
 
   if (action === "next") {
+    closeReaderPreview();
     await api(`/api/articles/${detail.id}/action`, {
       method: "POST",
       body: JSON.stringify({ action: "viewed" }),
@@ -998,13 +1211,14 @@ function rerenderCurrentScreen() {
   }
   if (state.screen === "collection") {
     renderCollectionScreen();
-    return;
-  }
-  if (state.screen === "subscriptions") {
+  } else if (state.screen === "subscriptions") {
     renderSubscriptionScreen();
-    return;
+  } else {
+    renderMyScreen();
   }
-  renderMyScreen();
+  if (state.readerPreview.open) {
+    renderReaderPreview();
+  }
 }
 
 function attachGlobalEvents() {
@@ -1026,6 +1240,16 @@ function attachGlobalEvents() {
   refs.imageModal.addEventListener("click", (event) => {
     if (event.target.dataset.closeModal) {
       closeModal();
+    }
+  });
+  refs.readerPreviewModal.addEventListener("click", (event) => {
+    if (event.target.dataset.closeReaderPreview) {
+      closeReaderPreview();
+    }
+  });
+  refs.readerPreviewBody.addEventListener("click", (event) => {
+    if (!event.target.closest("#readerPreviewStage")) {
+      closeReaderPreview();
     }
   });
 

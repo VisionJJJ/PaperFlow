@@ -11,17 +11,22 @@
       <main class="app-main">
         <section id="homeScreen" class="screen active">
           <nav class="mode-tabs" aria-label="首页模式">
-            <button class="mode-tab active" data-mode="today" type="button">
-              <span>今日新增</span>
-              <strong id="todayCount">0</strong>
-            </button>
-            <button class="mode-tab" data-mode="queue" type="button">
-              <span>待阅读</span>
-              <strong id="queueCount">0</strong>
-            </button>
-            <button class="mode-tab" data-mode="images" type="button">
-              <span>图片速览</span>
-            </button>
+            <div class="mode-tabs-head">
+              <span class="mode-brand">PaperFlow</span>
+            </div>
+            <div class="mode-tab-row">
+              <button class="mode-tab active" data-mode="today" type="button">
+                <span>今日新增</span>
+                <strong id="todayCount">0</strong>
+              </button>
+              <button class="mode-tab" data-mode="queue" type="button">
+                <span>待阅读</span>
+                <strong id="queueCount">0</strong>
+              </button>
+              <button class="mode-tab" data-mode="images" type="button">
+                <span>图片速览</span>
+              </button>
+            </div>
           </nav>
 
           <section id="readerPanel" class="screen-panel"></section>
@@ -54,6 +59,13 @@
       <div class="image-modal-card">
         <button id="closeModal" class="close-button" type="button">关闭</button>
         <div id="modalBody"></div>
+      </div>
+    </div>
+
+    <div id="readerPreviewModal" class="image-modal hidden">
+      <div class="image-modal-backdrop" data-close-reader-preview="true"></div>
+      <div class="reader-preview-card">
+        <div id="readerPreviewBody"></div>
       </div>
     </div>
 
