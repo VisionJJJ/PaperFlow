@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+data/users/
+data/article_cache/
+data/*.tmp

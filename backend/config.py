@@ -19,6 +19,7 @@ ARTICLE_CACHE_DIR = DATA_DIR / "article_cache"
 SUBSCRIPTIONS_PATH = DATA_DIR / "subscriptions.json"
 ARTICLES_PATH = DATA_DIR / "articles.json"
 STATE_PATH = DATA_DIR / "state.json"
+USERS_DIR = DATA_DIR / "users"
 RSS_SEED_PATH = ROOT_DIR / "rss_list.json"
 
 USER_TIMEZONE = "Asia/Shanghai"

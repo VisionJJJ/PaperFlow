@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN" class="admin-html">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>PaperFlow 后台管理</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260330a" />
+    <link rel="stylesheet" href="/static/admin.css?v=20260330a" />
+  </head>
+  <body class="admin-body">
+    <main class="admin-shell">
+      <header class="admin-head">
+        <div>
+          <p class="admin-eyebrow">PaperFlow Admin</p>
+          <h1>归档与多用户状态</h1>
+          <p id="adminSummary" class="admin-summary">正在加载后台状态...</p>
+        </div>
+        <div class="admin-head-actions">
+          <a class="secondary-link" href="/" target="_blank" rel="noreferrer">打开前台</a>
+          <button id="refreshAdmin" class="primary-button" type="button">刷新数据</button>
+        </div>
+      </header>
+
+      <section id="adminMetricGrid" class="admin-metric-grid"></section>
+
+      <section class="admin-section">
+        <div class="admin-section-head">
+          <h2>订阅同步</h2>
+        </div>
+        <div id="subscriptionStatus" class="admin-list"></div>
+      </section>
+
+      <section class="admin-section">
+        <div class="admin-section-head">
+          <h2>多用户索引</h2>
+        </div>
+        <div id="userStatus" class="admin-list"></div>
+      </section>
+
+      <section class="admin-section">
+        <div class="admin-section-head">
+          <h2>缺失详情</h2>
+          <span id="missingCountBadge" class="admin-badge">0</span>
+        </div>
+        <div id="missingDetailList" class="admin-list"></div>
+      </section>
+    </main>
+
+    <script src="/static/admin.js?v=20260330a" defer></script>
+  </body>
+</html>

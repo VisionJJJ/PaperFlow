@@ -1,4 +1,8 @@
 const state = {
+  user: {
+    id: getOrCreateClientUserId(),
+    displayName: "",
+  },
   screen: "home",
   mode: "today",
   overview: null,
@@ -35,6 +39,36 @@ const SUGGESTED_SUBSCRIPTIONS = [
   { name: "Nature Geoscience", url: "https://www.nature.com/ngeo.rss" },
   { name: "Nature Medicine", url: "https://www.nature.com/nm.rss" },
 ];
+
+const USER_ID_STORAGE_KEY = "paperflow-user-id";
+
+function generateClientUserId() {
+  if (window.crypto?.randomUUID) {
+    return `anon-${window.crypto.randomUUID()}`;
+  }
+  return `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getOrCreateClientUserId() {
+  try {
+    const existing = window.localStorage.getItem(USER_ID_STORAGE_KEY);
+    if (existing) {
+      return existing;
+    }
+    const created = generateClientUserId();
+    window.localStorage.setItem(USER_ID_STORAGE_KEY, created);
+    return created;
+  } catch {
+    return generateClientUserId();
+  }
+}
+
+function persistClientUserId(userId) {
+  if (!userId) return;
+  try {
+    window.localStorage.setItem(USER_ID_STORAGE_KEY, userId);
+  } catch {}
+}
 
 const refs = {
   homeScreen: document.getElementById("homeScreen"),
@@ -152,9 +186,16 @@ function scheduleViewportSync() {
 }
 
 async function api(url, options = {}) {
+  const headers = {
+    "X-PaperFlow-User": state.user.id,
+    ...(options.headers || {}),
+  };
+  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
@@ -377,6 +418,12 @@ function renderModeTabs() {
 
 async function loadBootstrap() {
   state.overview = await api("/api/bootstrap");
+  const backendUser = state.overview?.user || {};
+  if (backendUser.user_id) {
+    state.user.id = backendUser.user_id;
+    state.user.displayName = backendUser.display_name || backendUser.user_id;
+    persistClientUserId(state.user.id);
+  }
   renderModeTabs();
   await ensureSavedImageIndexLoaded();
 }
@@ -1566,6 +1613,10 @@ function renderMyScreen() {
           <h3>订阅管理</h3>
           <p>管理 RSS 来源和优先级顺序。</p>
         </button>
+        <a class="hub-card hub-link" href="/admin" target="_blank" rel="noreferrer">
+          <h3>后台管理页</h3>
+          <p>查看归档进度、同步时间、缺失详情和多用户索引状态。</p>
+        </a>
       </section>
 
       <section class="stats-grid">

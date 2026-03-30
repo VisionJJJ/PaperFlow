@@ -20,6 +20,7 @@ from .config import (
     RSS_SEED_PATH,
     STATE_PATH,
     SUBSCRIPTIONS_PATH,
+    USERS_DIR,
     USER_TIMEZONE,
 )
 from .nature import (
@@ -36,7 +37,7 @@ from .storage import read_json, write_json
 
 LOCK = Lock()
 TZ = ZoneInfo(USER_TIMEZONE)
-STATE_SCHEMA_VERSION = 2
+STATE_SCHEMA_VERSION = 3
 
 
 def utc_now_iso() -> str:
@@ -60,6 +61,14 @@ def article_cache_path(article_id: str):
     return ARTICLE_CACHE_DIR / f"{article_id}.json"
 
 
+def normalize_user_id(raw_user_id: str | None) -> str:
+    return slugify(str(raw_user_id or "").strip()) or "guest"
+
+
+def user_state_path(user_id: str | None) -> Any:
+    return USERS_DIR / f"{normalize_user_id(user_id)}.json"
+
+
 def article_sort_key(article: dict[str, Any]) -> tuple[Any, ...]:
     stamp = article.get("published_at") or article.get("first_seen_local_date") or ""
     return (int(article.get("priority", 999)), stamp, article.get("title", ""))
@@ -69,9 +78,17 @@ def empty_resume_state() -> dict[str, Any]:
     return {"article_id": None, "archive_seq": 0, "updated_at": None}
 
 
-def default_state() -> dict[str, Any]:
+def default_state(user_id: str | None = None) -> dict[str, Any]:
+    normalized_user_id = normalize_user_id(user_id)
+    now_iso = utc_now_iso()
     return {
         "schema_version": STATE_SCHEMA_VERSION,
+        "meta": {
+            "user_id": normalized_user_id,
+            "display_name": normalized_user_id,
+            "created_at": now_iso,
+            "last_seen_at": now_iso,
+        },
         "article_states": {},
         "saved_images": {},
         "reading": {
@@ -142,13 +159,31 @@ def normalize_resume(raw: Any) -> dict[str, Any]:
     return resume
 
 
-def normalize_state(raw: Any) -> tuple[dict[str, Any], bool]:
+def normalize_state(raw: Any, user_id: str | None = None) -> tuple[dict[str, Any], bool]:
     changed = False
-    base = default_state()
+    base = default_state(user_id)
     if not isinstance(raw, dict):
         return base, True
 
     if "article_states" in raw or "reading" in raw or raw.get("schema_version") == STATE_SCHEMA_VERSION:
+        meta = raw.get("meta", {})
+        if not isinstance(meta, dict):
+            meta = {}
+            changed = True
+        created_at = meta.get("created_at") or base["meta"]["created_at"]
+        last_seen_at = meta.get("last_seen_at") or created_at
+        display_name = str(meta.get("display_name", base["meta"]["display_name"])).strip() or base["meta"]["display_name"]
+        if meta.get("user_id") != base["meta"]["user_id"]:
+            changed = True
+        if not meta:
+            changed = True
+        base["meta"] = {
+            "user_id": base["meta"]["user_id"],
+            "display_name": display_name,
+            "created_at": created_at,
+            "last_seen_at": last_seen_at,
+        }
+
         article_states = raw.get("article_states", {})
         if not isinstance(article_states, dict):
             article_states = {}
@@ -292,16 +327,55 @@ def save_articles(articles: list[dict[str, Any]]) -> None:
     write_json(ARTICLES_PATH, ordered)
 
 
-def load_state() -> dict[str, Any]:
-    state, changed = normalize_state(read_json(STATE_PATH, default_state()))
+def migrate_legacy_state_if_needed(user_id: str) -> None:
+    path = user_state_path(user_id)
+    if path.exists():
+        return
+    USERS_DIR.mkdir(parents=True, exist_ok=True)
+    if any(USERS_DIR.glob("*.json")):
+        return
+    legacy_raw = read_json(STATE_PATH, None)
+    if legacy_raw is None:
+        return
+    legacy_state, _ = normalize_state(legacy_raw, user_id=user_id)
+    write_json(path, legacy_state)
+
+
+def load_state(user_id: str | None = None, touch: bool = False) -> dict[str, Any]:
+    normalized_user_id = normalize_user_id(user_id)
+    path = user_state_path(normalized_user_id)
+    migrate_legacy_state_if_needed(normalized_user_id)
+    state, changed = normalize_state(read_json(path, default_state(normalized_user_id)), user_id=normalized_user_id)
+    if touch:
+        state.setdefault("meta", default_state(normalized_user_id)["meta"])
+        state["meta"]["last_seen_at"] = utc_now_iso()
+        changed = True
     if changed:
-        write_json(STATE_PATH, state)
+        write_json(path, state)
     return state
 
 
-def save_state(state: dict[str, Any]) -> None:
-    normalized, _ = normalize_state(state)
-    write_json(STATE_PATH, normalized)
+def save_state(user_id: str | None, state: dict[str, Any]) -> None:
+    normalized_user_id = normalize_user_id(user_id)
+    normalized, _ = normalize_state(state, user_id=normalized_user_id)
+    write_json(user_state_path(normalized_user_id), normalized)
+
+
+def list_user_states() -> list[dict[str, Any]]:
+    USERS_DIR.mkdir(parents=True, exist_ok=True)
+    states: list[dict[str, Any]] = []
+    for path in sorted(USERS_DIR.glob("*.json")):
+        state, changed = normalize_state(read_json(path, {}), user_id=path.stem)
+        if changed:
+            write_json(path, state)
+        states.append(state)
+    if states:
+        return states
+    legacy_raw = read_json(STATE_PATH, None)
+    if legacy_raw is not None:
+        legacy_state, _ = normalize_state(legacy_raw, user_id="legacy")
+        states.append(legacy_state)
+    return states
 
 
 def initialize_if_empty() -> None:
@@ -527,7 +601,7 @@ def resolve_resume_index(mode: str, articles: list[dict[str, Any]], state: dict[
 
 
 def update_resume_anchor(state: dict[str, Any], mode: str, article: dict[str, Any] | None) -> None:
-    reading = state.setdefault("reading", default_state()["reading"])
+    reading = state.setdefault("reading", default_state(state.get("meta", {}).get("user_id"))["reading"])
     reading.setdefault(mode, empty_resume_state())
     if article:
         reading[mode] = {
@@ -540,10 +614,10 @@ def update_resume_anchor(state: dict[str, Any], mode: str, article: dict[str, An
         reading[mode] = empty_resume_state()
 
 
-def get_feed(mode: str, offset: int = 0, limit: int = DEFAULT_BATCH_SIZE) -> dict[str, Any]:
+def get_feed(user_id: str | None, mode: str, offset: int = 0, limit: int = DEFAULT_BATCH_SIZE) -> dict[str, Any]:
     initialize_if_empty()
     limit = max(1, min(limit, MAX_BATCH_SIZE))
-    state = load_state()
+    state = load_state(user_id, touch=offset == 0)
     day = today_local()
     articles = unread_bucket_articles(mode, load_articles(), state, day)
     resume_index = resolve_resume_index(mode, articles, state)
@@ -551,7 +625,7 @@ def get_feed(mode: str, offset: int = 0, limit: int = DEFAULT_BATCH_SIZE) -> dic
     page = visible[offset : offset + limit]
     if offset == 0:
         update_resume_anchor(state, mode, visible[0] if visible else None)
-        save_state(state)
+        save_state(user_id, state)
     return {
         "mode": mode,
         "offset": offset,
@@ -563,8 +637,8 @@ def get_feed(mode: str, offset: int = 0, limit: int = DEFAULT_BATCH_SIZE) -> dic
     }
 
 
-def get_article_details(article_ids: list[str]) -> list[dict[str, Any]]:
-    state = load_state()
+def get_article_details(user_id: str | None, article_ids: list[str]) -> list[dict[str, Any]]:
+    state = load_state(user_id)
     details = []
     for article_id in article_ids[:MAX_BATCH_SIZE]:
         detail = hydrate_article_details(article_id, state, hydrate_missing=False)
@@ -595,10 +669,15 @@ def next_bucket_anchor(
     update_resume_anchor(state, mode, bucket_articles[next_index] if bucket_articles else None)
 
 
-def set_article_action(article_id: str, action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def set_article_action(
+    user_id: str | None,
+    article_id: str,
+    action: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     payload = payload or {}
     with LOCK:
-        state = load_state()
+        state = load_state(user_id, touch=True)
         articles = load_articles()
         article_map = {item["id"]: item for item in articles}
         article = article_map.get(article_id)
@@ -633,7 +712,9 @@ def set_article_action(article_id: str, action: str, payload: dict[str, Any] | N
             raise ValueError(f"Unsupported action: {action}")
 
         if action in {"viewed", "dismissed", "saved"} and article:
-            last_seen = int(state.setdefault("reading", default_state()["reading"]).get("last_seen_archive_seq", 0) or 0)
+            last_seen = int(
+                state.setdefault("reading", default_state(user_id)["reading"]).get("last_seen_archive_seq", 0) or 0
+            )
             state["reading"]["last_seen_archive_seq"] = max(last_seen, int(article.get("archive_seq", 0) or 0))
             if current_mode:
                 next_bucket_anchor(state, current_mode, article_id, articles, day)
@@ -642,13 +723,13 @@ def set_article_action(article_id: str, action: str, payload: dict[str, Any] | N
             if mode_after:
                 update_resume_anchor(state, mode_after, article)
 
-        save_state(state)
-    return get_overview()
+        save_state(user_id, state)
+    return get_overview(user_id)
 
 
-def toggle_saved_image(article_id: str, figure_index: int, image_url: str) -> dict[str, Any]:
+def toggle_saved_image(user_id: str | None, article_id: str, figure_index: int, image_url: str) -> dict[str, Any]:
     with LOCK:
-        state = load_state()
+        state = load_state(user_id, touch=True)
         key = f"{article_id}:{figure_index}"
         saved_images = state.setdefault("saved_images", {})
         if key in saved_images:
@@ -661,21 +742,22 @@ def toggle_saved_image(article_id: str, figure_index: int, image_url: str) -> di
                 "saved_at": utc_now_iso(),
             }
             saved = True
-        save_state(state)
-    overview = get_overview()
+        save_state(user_id, state)
+    overview = get_overview(user_id)
     overview["saved"] = saved
     overview["key"] = key
     return overview
 
 
 def get_recent_image_tiles(
+    user_id: str | None,
     offset: int = 0,
     limit: int = DEFAULT_IMAGE_BATCH,
     journal: str | None = None,
     saved_only: bool = False,
 ) -> dict[str, Any]:
     initialize_if_empty()
-    state = load_state()
+    state = load_state(user_id)
     cutoff = datetime.now(TZ).date() - timedelta(days=IMAGE_LOOKBACK_DAYS)
     tiles: list[dict[str, Any]] = []
 
@@ -722,8 +804,8 @@ def get_recent_image_tiles(
     }
 
 
-def get_saved_papers(query: str = "") -> list[dict[str, Any]]:
-    state = load_state()
+def get_saved_papers(user_id: str | None, query: str = "") -> list[dict[str, Any]]:
+    state = load_state(user_id)
     query = query.strip().lower()
     saved: list[dict[str, Any]] = []
     for article in load_articles():
@@ -749,8 +831,8 @@ def resolve_saved_figure(article_id: str, figure_index: int) -> dict[str, Any] |
     return None
 
 
-def get_saved_images() -> list[dict[str, Any]]:
-    state = load_state()
+def get_saved_images(user_id: str | None) -> list[dict[str, Any]]:
+    state = load_state(user_id)
     article_map = {item["id"]: item for item in load_articles()}
     images: list[dict[str, Any]] = []
     for key, item in state.get("saved_images", {}).items():
@@ -778,7 +860,7 @@ def get_saved_images() -> list[dict[str, Any]]:
     return sorted(images, key=lambda item: item.get("saved_at") or "", reverse=True)
 
 
-def add_subscription(name: str, url: str) -> dict[str, Any]:
+def add_subscription(user_id: str | None, name: str, url: str) -> dict[str, Any]:
     with LOCK:
         subscriptions = [item for item in load_subscriptions() if item["url"] != url]
         subscriptions.append(
@@ -792,15 +874,15 @@ def add_subscription(name: str, url: str) -> dict[str, Any]:
         )
         write_json(SUBSCRIPTIONS_PATH, subscriptions)
     sync_subscriptions(single_url=url)
-    return get_overview()
+    return get_overview(user_id)
 
 
-def reorder_subscription(subscription_id: str, direction: str) -> dict[str, Any]:
+def reorder_subscription(user_id: str | None, subscription_id: str, direction: str) -> dict[str, Any]:
     with LOCK:
         subscriptions = load_subscriptions()
         index = next((idx for idx, item in enumerate(subscriptions) if item["id"] == subscription_id), None)
         if index is None:
-            return get_overview()
+            return get_overview(user_id)
         if direction == "up" and index > 0:
             subscriptions[index - 1], subscriptions[index] = subscriptions[index], subscriptions[index - 1]
         elif direction == "down" and index < len(subscriptions) - 1:
@@ -814,21 +896,21 @@ def reorder_subscription(subscription_id: str, direction: str) -> dict[str, Any]
         for article in articles:
             article["priority"] = priority_map.get(article.get("subscription_id"), article.get("priority", 999))
         save_articles(sorted(articles, key=article_sort_key, reverse=True))
-    return get_overview()
+    return get_overview(user_id)
 
 
-def delete_subscription(subscription_id: str) -> dict[str, Any]:
+def delete_subscription(user_id: str | None, subscription_id: str) -> dict[str, Any]:
     with LOCK:
         subscriptions = [item for item in load_subscriptions() if item["id"] != subscription_id]
         for priority, item in enumerate(subscriptions, start=1):
             item["priority"] = priority
         write_json(SUBSCRIPTIONS_PATH, subscriptions)
-    return get_overview()
+    return get_overview(user_id)
 
 
-def get_overview() -> dict[str, Any]:
+def get_overview(user_id: str | None) -> dict[str, Any]:
     initialize_if_empty()
-    state = load_state()
+    state = load_state(user_id, touch=True)
     articles = load_articles()
     day = today_local()
     today_total = len(
@@ -840,8 +922,8 @@ def get_overview() -> dict[str, Any]:
     )
     today_pending = len([article for article in articles if bucket_for_article(article, state, day) == "today"])
     queue_pending = len([article for article in articles if bucket_for_article(article, state, day) == "queue"])
-    saved_papers = len(get_saved_papers())
-    saved_images = len(get_saved_images())
+    saved_papers = len(get_saved_papers(user_id))
+    saved_images = len(get_saved_images(user_id))
     viewed_count = len(
         [item for item in state.get("article_states", {}).values() if item.get("status") == "viewed"]
     )
@@ -875,4 +957,66 @@ def get_overview() -> dict[str, Any]:
             "queue": reading.get("queue", empty_resume_state()),
             "lastSeenArchiveSeq": reading.get("last_seen_archive_seq", 0),
         },
+        "user": state.get("meta", {}),
+    }
+
+
+def summarize_user_state(state: dict[str, Any]) -> dict[str, Any]:
+    meta = state.get("meta", {})
+    article_states = state.get("article_states", {})
+    reading = state.get("reading", {})
+    return {
+        "userId": meta.get("user_id"),
+        "displayName": meta.get("display_name") or meta.get("user_id"),
+        "createdAt": meta.get("created_at"),
+        "lastSeenAt": meta.get("last_seen_at"),
+        "savedPaperCount": len([item for item in article_states.values() if item.get("status") == "saved"]),
+        "savedImageCount": len(state.get("saved_images", {})),
+        "viewedCount": len([item for item in article_states.values() if item.get("status") == "viewed"]),
+        "todayResume": reading.get("today", empty_resume_state()),
+        "queueResume": reading.get("queue", empty_resume_state()),
+    }
+
+
+def get_admin_dashboard() -> dict[str, Any]:
+    initialize_if_empty()
+    articles = load_articles()
+    subscriptions = sorted(load_subscriptions(), key=lambda item: item.get("priority", 999))
+    user_states = list_user_states()
+    caches = {article["id"]: read_detail_cache(article["id"]) for article in articles}
+    detail_ready = [
+        article
+        for article in articles
+        if article.get("detail_hydrated_at") and caches.get(article["id"], {}).get("detail_hydrated_at")
+    ]
+    missing_detail = [
+        {
+            "id": article["id"],
+            "archiveSeq": article.get("archive_seq"),
+            "title": article.get("title"),
+            "journalTitle": article.get("journal_title"),
+            "publishedAt": article.get("published_at"),
+            "articleUrl": article.get("article_url"),
+        }
+        for article in articles
+        if not article.get("detail_hydrated_at") or not caches.get(article["id"], {}).get("detail_hydrated_at")
+    ]
+    total_figures = sum(len(caches.get(article["id"], {}).get("figures", [])) for article in articles)
+    latest_synced_at = max([item.get("last_synced_at") for item in subscriptions if item.get("last_synced_at")] or [None])
+    return {
+        "archive": {
+            "articleCount": len(articles),
+            "detailReadyCount": len(detail_ready),
+            "missingDetailCount": len(missing_detail),
+            "detailProgress": round((len(detail_ready) / len(articles)) * 100, 2) if articles else 100.0,
+            "latestArchiveSeq": max_archive_seq(articles),
+            "figureCount": total_figures,
+            "lastSyncedAt": latest_synced_at,
+        },
+        "subscriptions": subscriptions,
+        "users": {
+            "count": len(user_states),
+            "items": [summarize_user_state(state) for state in user_states],
+        },
+        "missingDetails": missing_detail[:50],
     }
