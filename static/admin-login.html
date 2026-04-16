@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN" class="admin-html">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>PaperFlow 后台登录</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260416a" />
+    <link rel="stylesheet" href="/static/admin.css?v=20260416a" />
+  </head>
+  <body class="admin-body">
+    <main class="admin-login-shell">
+      <section class="admin-login-card">
+        <p class="admin-eyebrow">PaperFlow Admin</p>
+        <h1>后台登录</h1>
+        <p class="admin-summary">输入管理员账号和密码后才能访问归档管理页。</p>
+        <form id="adminLoginForm" class="admin-login-form">
+          <label class="admin-field">
+            <span>账号</span>
+            <input id="adminUsername" type="text" autocomplete="username" value="admin" />
+          </label>
+          <label class="admin-field">
+            <span>密码</span>
+            <input id="adminPassword" type="password" autocomplete="current-password" />
+          </label>
+          <p id="adminLoginMessage" class="admin-login-message"></p>
+          <button id="adminLoginButton" class="primary-button" type="submit">登录后台</button>
+        </form>
+        <a class="secondary-link" href="/">返回前台</a>
+      </section>
+    </main>
+
+    <script src="/static/admin-login.js?v=20260416a" defer></script>
+  </body>
+</html>

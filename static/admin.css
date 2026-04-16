@@ -19,6 +19,61 @@ body.admin-body {
   gap: 16px;
 }
 
+.admin-login-shell {
+  width: min(520px, 100%);
+  min-height: 100svh;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 20px 16px;
+}
+
+.admin-login-card {
+  width: 100%;
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid rgba(23, 20, 18, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.admin-login-card h1 {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Baskerville, serif;
+  font-size: clamp(1.3rem, 3vw, 2rem);
+}
+
+.admin-login-form {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.admin-field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 20, 18, 0.12);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+}
+
+.admin-login-message {
+  min-height: 18px;
+  margin: 0;
+  color: #8a2d12;
+  font-size: 0.76rem;
+}
+
 .admin-head {
   display: flex;
   align-items: flex-end;

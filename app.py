@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from flask import Flask, jsonify, request
+import hmac
+import os
+from functools import wraps
+
+from flask import Flask, jsonify, redirect, request, session, url_for
 
 from backend.service import (
     add_subscription,
@@ -20,6 +24,12 @@ from backend.service import (
 
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
+app.config["SECRET_KEY"] = os.environ.get("PAPERFLOW_SECRET_KEY", "paperflow-dev-secret")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+ADMIN_USERNAME = os.environ.get("PAPERFLOW_ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("PAPERFLOW_ADMIN_PASSWORD", "paperflow-admin")
 
 
 def safe_int(value, default: int = 0) -> int:
@@ -45,9 +55,23 @@ def current_user_id() -> str | None:
     return str(header_user or query_user or body_user or "").strip() or None
 
 
+def is_admin_authenticated() -> bool:
+    return bool(session.get("admin_authenticated"))
+
+
+def require_admin_api(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not is_admin_authenticated():
+            return jsonify({"error": "unauthorized"}), 401
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 @app.after_request
 def disable_cache(response):
-    if request.path in {"/", "/admin"} or request.path.startswith("/static/"):
+    if request.path in {"/", "/admin", "/admin/login"} or request.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -61,7 +85,16 @@ def index():
 
 @app.route("/admin")
 def admin():
+    if not is_admin_authenticated():
+        return redirect(url_for("admin_login"))
     return app.send_static_file("admin.html")
+
+
+@app.route("/admin/login")
+def admin_login():
+    if is_admin_authenticated():
+        return redirect(url_for("admin"))
+    return app.send_static_file("admin-login.html")
 
 
 @app.get("/api/bootstrap")
@@ -76,6 +109,36 @@ def sync():
     result = sync_subscriptions(single_url=rss_url)
     result["overview"] = get_overview(current_user_id())
     return jsonify(result)
+
+
+@app.post("/api/admin/login")
+def admin_login_api():
+    payload = request.get_json(silent=True) or {}
+    username = str(payload.get("username", "")).strip()
+    password = str(payload.get("password", ""))
+    if not (
+        hmac.compare_digest(username, ADMIN_USERNAME)
+        and hmac.compare_digest(password, ADMIN_PASSWORD)
+    ):
+        return jsonify({"ok": False, "error": "invalid_credentials"}), 401
+    session["admin_authenticated"] = True
+    session["admin_username"] = ADMIN_USERNAME
+    return jsonify({"ok": True, "username": ADMIN_USERNAME})
+
+
+@app.post("/api/admin/logout")
+@require_admin_api
+def admin_logout_api():
+    session.pop("admin_authenticated", None)
+    session.pop("admin_username", None)
+    return jsonify({"ok": True})
+
+
+@app.get("/api/admin/session")
+def admin_session_api():
+    if not is_admin_authenticated():
+        return jsonify({"authenticated": False}), 401
+    return jsonify({"authenticated": True, "username": session.get("admin_username", ADMIN_USERNAME)})
 
 
 @app.get("/api/feed")
@@ -158,6 +221,7 @@ def subscriptions_delete(subscription_id: str):
 
 
 @app.get("/api/admin/archive-status")
+@require_admin_api
 def admin_archive_status():
     return jsonify(get_admin_dashboard())
 

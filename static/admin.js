@@ -6,6 +6,7 @@ const refs = {
   missingDetailList: document.getElementById("missingDetailList"),
   missingCountBadge: document.getElementById("missingCountBadge"),
   refreshButton: document.getElementById("refreshAdmin"),
+  logoutButton: document.getElementById("logoutAdmin"),
 };
 
 function escapeHtml(value = "") {
@@ -36,6 +37,25 @@ async function api(url) {
   const response = await fetch(url, {
     headers: { "Cache-Control": "no-cache" },
   });
+  if (response.status === 401) {
+    window.location.href = "/admin/login";
+    throw new Error("Unauthorized");
+  }
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+async function post(url) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+  });
+  if (response.status === 401) {
+    window.location.href = "/admin/login";
+    throw new Error("Unauthorized");
+  }
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
@@ -168,6 +188,15 @@ refs.refreshButton.addEventListener("click", async () => {
     await loadDashboard();
   } finally {
     refs.refreshButton.disabled = false;
+  }
+});
+
+refs.logoutButton?.addEventListener("click", async () => {
+  refs.logoutButton.disabled = true;
+  try {
+    await post("/api/admin/logout");
+  } finally {
+    window.location.href = "/admin/login";
   }
 });
 
