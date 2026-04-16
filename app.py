@@ -4,11 +4,12 @@ import hmac
 import os
 from functools import wraps
 
-from flask import Flask, jsonify, redirect, request, session, url_for
+from flask import Flask, abort, jsonify, redirect, request, send_file, session, url_for
 
 from backend.service import (
     add_subscription,
     delete_subscription,
+    ensure_thumbnail_cached,
     get_admin_dashboard,
     get_article_details,
     get_feed,
@@ -81,6 +82,17 @@ def disable_cache(response):
 @app.route("/")
 def index():
     return app.send_static_file("index.html")
+
+
+@app.get("/media/thumbs/<article_id>/<int:figure_index>.webp")
+def media_thumbnail(article_id: str, figure_index: int):
+    try:
+        target = ensure_thumbnail_cached(article_id, figure_index)
+    except Exception:
+        return abort(404)
+    if not target or not target.exists():
+        return abort(404)
+    return send_file(target, mimetype="image/webp", max_age=86400)
 
 
 @app.route("/admin")

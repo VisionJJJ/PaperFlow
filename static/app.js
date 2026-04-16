@@ -15,7 +15,11 @@ const state = {
     tab: "papers",
     query: "",
     journal: "all",
+    column: "all",
+    managing: false,
     savedImages: [],
+    selectedPapers: [],
+    copiedSelection: [],
   },
   savedImageKeys: new Set(),
   savedImageIndexLoaded: false,
@@ -31,6 +35,7 @@ const state = {
     offsetX: 0,
     offsetY: 0,
   },
+  noteFeedbackTimer: null,
 };
 
 const SUGGESTED_SUBSCRIPTIONS = [
@@ -41,6 +46,9 @@ const SUGGESTED_SUBSCRIPTIONS = [
 ];
 
 const USER_ID_STORAGE_KEY = "paperflow-user-id";
+const FEED_PAGE_SIZE = 6;
+const FEED_DETAIL_WINDOW = 3;
+const IMAGE_PAGE_SIZE = 12;
 
 function generateClientUserId() {
   if (window.crypto?.randomUUID) {
@@ -212,6 +220,10 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#39;");
 }
 
+function escapeAttribute(value = "") {
+  return escapeHtml(value);
+}
+
 function formatDate(value) {
   if (!value) return "暂无";
   try {
@@ -273,8 +285,37 @@ function normalizeImageItem(rawItem) {
     article_id: articleId,
     figure_index: figureIndex,
     image_url: imageUrl,
+    thumbnail_url: String(rawItem.thumbnail_url ?? rawItem.thumbnailUrl ?? imageUrl).trim() || imageUrl,
     key: rawItem.key || figureKey(articleId, figureIndex),
   };
+}
+
+function displayImageUrl(item) {
+  return String(item?.thumbnail_url || item?.image_url || "").trim();
+}
+
+function originalImageUrl(item) {
+  return String(item?.image_url || item?.thumbnail_url || "").trim();
+}
+
+function iconMarkup(name) {
+  const paths = {
+    detail:
+      '<path d="M6 9.5 12 15.5 18 9.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>',
+    dismiss:
+      '<path d="M7 7 17 17M17 7 7 17" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/>',
+    previous:
+      '<path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>',
+    next:
+      '<path d="m9.5 6 6 6-6 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>',
+    save:
+      '<path d="M8.5 5.5h7a1 1 0 0 1 1 1v11l-4.5-2.9-4.5 2.9v-11a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/>',
+    saveFilled:
+      '<path d="M8.5 5.5h7a1 1 0 0 1 1 1v11l-4.5-2.9-4.5 2.9v-11a1 1 0 0 1 1-1Z" fill="currentColor" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/>',
+    checkCircle:
+      '<circle cx="12" cy="12" r="8.2" fill="currentColor"/><path d="m8.7 12.1 2.2 2.3 4.4-4.7" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9"/>',
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" class="button-icon">${paths[name] || ""}</svg>`;
 }
 
 function isFigureSaved(articleId, figureIndex) {
@@ -387,11 +428,11 @@ async function paintContainCanvas(canvasId, frameId, url) {
 }
 
 function primeFigureSet(figures = []) {
-  figures.forEach((figure) => {
-    if (figure?.image_url) {
-      primeImageMeta(figure.image_url);
-    }
-  });
+  const first = figures.find((figure) => displayImageUrl(figure));
+  const url = displayImageUrl(first);
+  if (url) {
+    primeImageMeta(url);
+  }
 }
 
 function renderBottomNav() {
@@ -446,19 +487,12 @@ async function ensureFeedPage(mode) {
     renderReader();
   }
   try {
-    const page = await api(`/api/feed?mode=${mode}&offset=${feed.offset}&limit=12`);
+    const page = await api(`/api/feed?mode=${mode}&offset=${feed.offset}&limit=${FEED_PAGE_SIZE}`);
     feed.ids.push(...page.ids);
     feed.offset += page.ids.length;
     feed.total = page.total;
     feed.hasMore = page.has_more;
-    if (page.ids.length) {
-      const details = await api(`/api/article-details?ids=${page.ids.join(",")}`);
-      details.items.forEach((item) => {
-        feed.details[item.id] = { ...(feed.details[item.id] || {}), ...item };
-        primeFigureSet(item.figures || []);
-      });
-      void ensureArticleDetail(mode, page.ids[0]);
-    }
+    await ensureFeedDetailWindow(mode);
   } finally {
     feed.loading = false;
     if (state.screen === "home" && state.mode === mode) {
@@ -490,6 +524,34 @@ async function ensureArticleDetail(mode, articleId) {
   }
 }
 
+async function ensureFeedDetailWindow(mode) {
+  const feed = state.feeds[mode];
+  const desiredIds = feed.ids.slice(feed.currentIndex, feed.currentIndex + FEED_DETAIL_WINDOW);
+  const missing = desiredIds.filter((id) => id && !feed.details[id] && !feed.detailLoading[id]);
+  if (!missing.length) return;
+
+  missing.forEach((id) => {
+    feed.detailLoading[id] = true;
+  });
+  if (state.screen === "home" && state.mode === mode) {
+    renderReader();
+  }
+  try {
+    const details = await api(`/api/article-details?ids=${missing.join(",")}`);
+    details.items.forEach((item) => {
+      feed.details[item.id] = { ...(feed.details[item.id] || {}), ...item };
+      primeFigureSet(item.figures || []);
+    });
+  } finally {
+    missing.forEach((id) => {
+      delete feed.detailLoading[id];
+    });
+    if (state.screen === "home" && state.mode === mode) {
+      renderReader();
+    }
+  }
+}
+
 async function switchMode(mode) {
   state.mode = mode;
   closeReaderPreview();
@@ -510,6 +572,7 @@ async function switchMode(mode) {
   if (!feed.ids.length && feed.hasMore) {
     await ensureFeedPage(mode);
   } else {
+    await ensureFeedDetailWindow(mode);
     renderReader();
   }
 }
@@ -654,9 +717,15 @@ function renderReader() {
         detail.state?.status === "saved"
           ? `
         <section class="note-strip">
-          <textarea id="noteInput" rows="1" placeholder="补一句备注，默认进入未分类。">${escapeHtml(detail.state?.note || "")}</textarea>
+          <div class="note-input-wrap">
+            <textarea id="noteInput" rows="1" placeholder="补一句备注，默认进入未分类。">${escapeHtml(detail.state?.note || "")}</textarea>
+            ${noteFeedbackMarkup(false)}
+          </div>
           <div class="note-actions">
-            <button class="secondary-button" type="button" disabled>专栏归类</button>
+            <div class="column-action-wrap">
+              <button class="secondary-button" data-action="open-column" type="button">${escapeHtml(detail.state?.column || "专栏归类")}</button>
+              ${columnMenuMarkup(detail)}
+            </div>
             <button class="secondary-button" data-action="save-note" type="button">保存备注</button>
           </div>
         </section>
@@ -685,10 +754,27 @@ function renderReader() {
     }
   }
 
+  const detailButton = refs.readerPanel.querySelector('[data-action="toggle-detail"]');
+  const dismissButton = refs.readerPanel.querySelector('[data-action="dismissed"]');
+  const previousButton = refs.readerPanel.querySelector('[data-action="previous"]');
+  const savedButton = refs.readerPanel.querySelector('[data-action="saved"]');
+  const nextButton = refs.readerPanel.querySelector('[data-action="next"]');
+  const savedStar = refs.readerPanel.querySelector(".saved-star");
+  const readerCanvas = document.getElementById("readerFigureCanvas");
+  if (detailButton) detailButton.innerHTML = iconMarkup("detail");
+  if (dismissButton) dismissButton.innerHTML = iconMarkup("dismiss");
+  if (previousButton) previousButton.innerHTML = iconMarkup("previous");
+  if (savedButton) savedButton.innerHTML = iconMarkup(detail.state?.status === "saved" ? "saveFilled" : "save");
+  if (nextButton) nextButton.innerHTML = iconMarkup("next");
+  if (savedStar) savedStar.textContent = "★";
+  if (readerCanvas && activeFigure) {
+    readerCanvas.dataset.imageUrl = displayImageUrl(activeFigure);
+  }
+
   bindReaderEvents(figures);
-  if (activeFigure?.image_url) {
+  if (activeFigure) {
     requestAnimationFrame(() => {
-      void paintContainCanvas("readerFigureCanvas", "readerFigureFrame", activeFigure.image_url);
+      void paintContainCanvas("readerFigureCanvas", "readerFigureFrame", displayImageUrl(activeFigure));
     });
   }
   maybePrefetchNext();
@@ -931,6 +1017,19 @@ function bindReaderEvents(figures) {
     });
   });
 
+  refs.readerPanel.querySelectorAll("[data-column-value]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await handleReaderAction("set-column", { column: button.dataset.columnValue });
+    });
+  });
+
+  refs.readerPanel.querySelector("[data-column-create]")?.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    const value = document.getElementById("newColumnInput")?.value || "";
+    await handleReaderAction("set-column", { column: value });
+  });
+
   const mediaStage = refs.readerPanel.querySelector("[data-media-stage]");
   const figureStage = refs.readerPanel.querySelector("[data-reader-figure]");
   if (mediaStage && figureStage) {
@@ -1030,7 +1129,26 @@ function bindReaderEvents(figures) {
   });
 }
 
-async function handleReaderAction(action) {
+function flashNoteSaved() {
+  const indicator = document.getElementById("noteSaveIndicator");
+  if (!indicator) return;
+  indicator.classList.add("visible");
+  if (state.noteFeedbackTimer) {
+    clearTimeout(state.noteFeedbackTimer);
+  }
+  state.noteFeedbackTimer = window.setTimeout(() => {
+    indicator.classList.remove("visible");
+  }, 1000);
+}
+
+function toggleColumnPopover(force) {
+  const popover = document.getElementById("columnPopover");
+  if (!popover) return;
+  const shouldOpen = typeof force === "boolean" ? force : popover.classList.contains("hidden");
+  popover.classList.toggle("hidden", !shouldOpen);
+}
+
+async function handleReaderAction(action, extra = {}) {
   const feed = currentFeed();
   const currentId = feed.ids[feed.currentIndex];
   const detail = currentId ? feed.details[currentId] : null;
@@ -1049,6 +1167,24 @@ async function handleReaderAction(action) {
       body: JSON.stringify({ action: "note", note }),
     });
     detail.state.note = note;
+    flashNoteSaved();
+    return;
+  }
+
+  if (action === "open-column") {
+    toggleColumnPopover();
+    return;
+  }
+
+  if (action === "set-column") {
+    const column = String(extra.column || "").trim();
+    if (!column) return;
+    await api(`/api/articles/${detail.id}/action`, {
+      method: "POST",
+      body: JSON.stringify({ action: "column", column }),
+    });
+    detail.state.column = column;
+    await loadBootstrap();
     renderReader();
     return;
   }
@@ -1089,11 +1225,13 @@ async function handleReaderAction(action) {
 
   if (action === "next") {
     closeReaderPreview();
-    await api(`/api/articles/${detail.id}/action`, {
-      method: "POST",
-      body: JSON.stringify({ action: "viewed" }),
-    });
-    detail.state.status = "viewed";
+    if (detail.state?.status !== "saved") {
+      await api(`/api/articles/${detail.id}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "viewed" }),
+      });
+      detail.state.status = "viewed";
+    }
   }
 
   feed.history.push({
@@ -1123,13 +1261,10 @@ async function handleReaderAction(action) {
 async function maybePrefetchNext() {
   const feed = currentFeed();
   if (state.mode === "images") return;
-  if (!feed.loading && feed.hasMore && feed.ids.length - feed.currentIndex <= 4) {
+  if (!feed.loading && feed.hasMore && feed.ids.length - feed.currentIndex <= 2) {
     await ensureFeedPage(state.mode);
   }
-  const nextId = feed.ids[feed.currentIndex + 1];
-  if (nextId) {
-    void ensureArticleDetail(state.mode, nextId);
-  }
+  void ensureFeedDetailWindow(state.mode);
 }
 
 async function loadImagePage(reset = false) {
@@ -1160,7 +1295,7 @@ async function loadImagePage(reset = false) {
 }
 
 function renderImages() {
-  const journals = state.overview?.journals || [];
+  const journals = state.overview?.imageJournals || [];
   const filters = [
     `<button class="filter-pill ${state.images.journal === "all" ? "active" : ""}" data-journal="all" type="button">全部期刊</button>`,
     ...journals.map(
@@ -1353,6 +1488,8 @@ async function renderCollectionScreen() {
       state.collection.journal === "all" || item.journal_title === state.collection.journal;
     return matchesQuery && matchesJournal;
   });
+  const visiblePaperIds = new Set(papers.map((item) => item.id));
+  state.collection.selectedPapers = (state.collection.selectedPapers || []).filter((id) => visiblePaperIds.has(id));
 
   const savedImages = state.collection.savedImages.filter((item) => {
     return state.collection.journal === "all" || item.journal_title === state.collection.journal;
@@ -1493,6 +1630,26 @@ async function renderCollectionScreen() {
       openImageModal(card.dataset.savedImage, state.collection.savedImages);
     });
   });
+}
+
+function toggleSelectedPaper(id) {
+  const selected = new Set(state.collection.selectedPapers || []);
+  if (selected.has(id)) {
+    selected.delete(id);
+  } else {
+    selected.add(id);
+  }
+  state.collection.selectedPapers = [...selected];
+}
+
+function clearSelectedPapers() {
+  state.collection.selectedPapers = [];
+}
+
+function exitCollectionManaging() {
+  state.collection.managing = false;
+  clearSelectedPapers();
+  state.collection.copiedSelection = [];
 }
 
 function renderSubscriptionScreen() {
@@ -1664,6 +1821,549 @@ function renderMyScreen() {
   `;
 }
 
+function renderImages() {
+  const journals = state.overview?.imageJournals || [];
+  const filters = [
+    `<button class="filter-pill ${state.images.journal === "all" ? "active" : ""}" data-journal="all" type="button">全部期刊</button>`,
+    ...journals.map(
+      (journal) =>
+        `<button class="filter-pill ${state.images.journal === journal ? "active" : ""}" data-journal="${escapeHtml(journal)}" type="button">${escapeHtml(journal)}</button>`,
+    ),
+  ].join("");
+
+  refs.imagePanel.innerHTML = `
+    <section class="image-toolbar">
+      <div class="filter-row image-filter-row">${filters}</div>
+      <button class="filter-pill ${state.images.savedOnly ? "active" : ""}" data-toggle-saved="true" type="button">只看已收藏</button>
+    </section>
+
+    <section class="image-masonry">
+      ${
+        state.images.items.length
+          ? state.images.items
+              .map((rawItem) => {
+                const item = normalizeImageItem(rawItem);
+                const displayUrl = displayImageUrl(item);
+                const ratio = getAspectRatio(state.imageMeta[displayUrl]);
+                const safeId = domSafeId(item.key);
+                return `
+                  <article class="image-tile" data-image-key="${escapeHtml(item.key)}">
+                    <div class="image-tile-media image-tile-stage" style="aspect-ratio:${ratio}">
+                      <div class="image-tile-frame" id="imageTileFrame-${safeId}">
+                        <canvas
+                          id="imageTileCanvas-${safeId}"
+                          class="figure-canvas"
+                          data-image-url="${escapeHtml(displayUrl)}"
+                          aria-label="${escapeHtml(item.title || "科研图片")}"
+                        ></canvas>
+                      </div>
+                      ${item.saved ? '<span class="saved-star image-tile-star">★</span>' : ""}
+                    </div>
+                  </article>
+                `;
+              })
+              .join("")
+          : '<div class="empty-card"><h2>暂无图片</h2><p>当前筛选条件下没有可展示图片。</p></div>'
+      }
+    </section>
+    <div id="imageLoadSentinel" class="image-load-sentinel" aria-hidden="true"></div>
+  `;
+
+  refs.imagePanel.querySelectorAll("[data-journal]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.images.journal = button.dataset.journal;
+      await loadImagePage(true);
+    });
+  });
+
+  refs.imagePanel.querySelector("[data-toggle-saved]")?.addEventListener("click", async () => {
+    state.images.savedOnly = !state.images.savedOnly;
+    await loadImagePage(true);
+  });
+
+  refs.imagePanel.querySelectorAll("[data-image-key]").forEach((tile) => {
+    let startX = 0;
+    let startY = 0;
+    let openTimer = null;
+    let lastTapAt = 0;
+
+    tile.addEventListener("pointerdown", (event) => {
+      startX = event.clientX;
+      startY = event.clientY;
+    });
+
+    tile.addEventListener("pointerup", async (event) => {
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+      if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) return;
+
+      const item = state.images.items.find((entry) => entry.key === tile.dataset.imageKey);
+      if (!item) return;
+      const now = event.timeStamp;
+      if (now - lastTapAt < 280) {
+        lastTapAt = 0;
+        if (openTimer) {
+          clearTimeout(openTimer);
+          openTimer = null;
+        }
+        await toggleImageSave(item);
+        renderImages();
+        return;
+      }
+
+      lastTapAt = now;
+      if (openTimer) {
+        clearTimeout(openTimer);
+      }
+      openTimer = window.setTimeout(() => {
+        openImageModal(tile.dataset.imageKey, state.images.items);
+        openTimer = null;
+      }, 220);
+    });
+  });
+
+  requestAnimationFrame(() => {
+    bindImageTileVisibility();
+    void ensureImageViewportFilled();
+  });
+  bindImageAutoLoad();
+}
+
+let imageLoadObserver = null;
+let imageTileObserver = null;
+
+function bindImageAutoLoad() {
+  imageLoadObserver?.disconnect?.();
+  const sentinel = document.getElementById("imageLoadSentinel");
+  if (!sentinel || !state.images.hasMore) return;
+  imageLoadObserver = new IntersectionObserver(
+    async (entries) => {
+      const [entry] = entries;
+      if (!entry?.isIntersecting || state.mode !== "images" || state.screen !== "home") return;
+      await loadImagePage(false);
+    },
+    {
+      root: refs.imagePanel,
+      rootMargin: "0px 0px 220px 0px",
+      threshold: 0.01,
+    },
+  );
+  imageLoadObserver.observe(sentinel);
+}
+
+async function ensureImageViewportFilled() {
+  if (state.screen !== "home" || state.mode !== "images") return;
+  if (state.images.loading || !state.images.hasMore) return;
+  const panel = refs.imagePanel;
+  if (!panel) return;
+  if (panel.scrollHeight <= panel.clientHeight + 120) {
+    await loadImagePage(false);
+  }
+}
+
+function bindImageTileVisibility() {
+  imageTileObserver?.disconnect?.();
+  imageTileObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const canvas = entry.target.querySelector("canvas.figure-canvas");
+        const frame = entry.target.querySelector(".image-tile-frame");
+        if (!canvas || !frame) return;
+        const imageUrl = canvas.dataset.imageUrl;
+        if (imageUrl) {
+          void paintContainCanvas(canvas.id, frame.id, imageUrl);
+        }
+        imageTileObserver?.unobserve(entry.target);
+      });
+    },
+    {
+      root: refs.imagePanel,
+      rootMargin: "120px 0px 160px 0px",
+      threshold: 0.01,
+    },
+  );
+
+  refs.imagePanel.querySelectorAll(".image-tile").forEach((tile) => {
+    imageTileObserver.observe(tile);
+  });
+}
+
+function normalizeImageCollection(items = []) {
+  return items.map((item) => normalizeImageItem(item)).filter(Boolean);
+}
+
+async function loadImagePage(reset = false) {
+  if (reset) {
+    state.images = {
+      ...createImageState(),
+      journal: state.images.journal,
+      savedOnly: state.images.savedOnly,
+    };
+  }
+
+  if (state.images.loading) return;
+  state.images.loading = true;
+  renderImages();
+  try {
+    const page = await api(
+      `/api/images?offset=${state.images.offset}&limit=${IMAGE_PAGE_SIZE}&journal=${encodeURIComponent(state.images.journal)}&savedOnly=${state.images.savedOnly}`,
+    );
+    const items = normalizeImageCollection(page.items);
+    state.images.items.push(...items);
+    state.images.offset += items.length;
+    state.images.total = page.total;
+    state.images.hasMore = page.has_more;
+    items.forEach((item) => primeImageMeta(displayImageUrl(item)));
+  } finally {
+    state.images.loading = false;
+    renderImages();
+  }
+}
+
+function renderImages() {
+  const journals = state.overview?.journals || [];
+  const filters = [
+    `<button class="filter-pill ${state.images.journal === "all" ? "active" : ""}" data-journal="all" type="button">全部期刊</button>`,
+    ...journals.map(
+      (journal) =>
+        `<button class="filter-pill ${state.images.journal === journal ? "active" : ""}" data-journal="${escapeHtml(journal)}" type="button">${escapeHtml(journal)}</button>`,
+    ),
+  ].join("");
+
+  refs.imagePanel.innerHTML = `
+    <section class="image-toolbar">
+      <div class="filter-row image-filter-row">${filters}</div>
+      <button class="filter-pill ${state.images.savedOnly ? "active" : ""}" data-toggle-saved="true" type="button">只看已收藏</button>
+    </section>
+
+    <section class="image-masonry">
+      ${
+        state.images.items.length
+          ? state.images.items
+              .map((rawItem) => {
+                const item = normalizeImageItem(rawItem);
+                const displayUrl = displayImageUrl(item);
+                const ratio = getAspectRatio(state.imageMeta[displayUrl]);
+                const safeId = domSafeId(item.key);
+                return `
+                  <article class="image-tile" data-image-key="${escapeHtml(item.key)}">
+                    <div class="image-tile-media image-tile-stage" style="aspect-ratio:${ratio}">
+                      <div class="image-tile-frame" id="imageTileFrame-${safeId}">
+                        <canvas
+                          id="imageTileCanvas-${safeId}"
+                          class="figure-canvas"
+                          data-image-url="${escapeHtml(displayUrl)}"
+                          aria-label="${escapeHtml(item.title || "科研图片")}"
+                        ></canvas>
+                      </div>
+                      ${item.saved ? '<span class="saved-star image-tile-star">★</span>' : ""}
+                    </div>
+                    <div class="image-tile-copy">
+                      <div class="image-tile-journal">${escapeHtml(item.journal_title || "Nature")}</div>
+                      <p class="image-tile-title">${escapeHtml(item.title || item.article_title || "科研图片")}</p>
+                    </div>
+                  </article>
+                `;
+              })
+              .join("")
+          : '<div class="empty-card"><h2>暂无图片</h2><p>近 7 天内暂未抓取到可展示的科研图片。</p></div>'
+      }
+    </section>
+    <div id="imageLoadSentinel" class="image-load-sentinel" aria-hidden="true"></div>
+  `;
+
+  refs.imagePanel.querySelectorAll("[data-journal]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.images.journal = button.dataset.journal;
+      await loadImagePage(true);
+    });
+  });
+
+  refs.imagePanel.querySelector("[data-toggle-saved]")?.addEventListener("click", async () => {
+    state.images.savedOnly = !state.images.savedOnly;
+    await loadImagePage(true);
+  });
+
+  refs.imagePanel.querySelectorAll("[data-image-key]").forEach((tile) => {
+    let startX = 0;
+    let startY = 0;
+    let openTimer = null;
+    let lastTapAt = 0;
+
+    tile.addEventListener("pointerdown", (event) => {
+      startX = event.clientX;
+      startY = event.clientY;
+    });
+
+    tile.addEventListener("pointerup", async (event) => {
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+      if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) return;
+
+      const item = state.images.items.find((entry) => entry.key === tile.dataset.imageKey);
+      if (!item) return;
+      const now = event.timeStamp;
+      if (now - lastTapAt < 280) {
+        lastTapAt = 0;
+        if (openTimer) {
+          clearTimeout(openTimer);
+          openTimer = null;
+        }
+        await toggleImageSave(item);
+        renderImages();
+        return;
+      }
+
+      lastTapAt = now;
+      if (openTimer) {
+        clearTimeout(openTimer);
+      }
+      openTimer = window.setTimeout(() => {
+        openImageModal(tile.dataset.imageKey, state.images.items);
+        openTimer = null;
+      }, 220);
+    });
+  });
+
+  requestAnimationFrame(() => {
+    bindImageTileVisibility();
+  });
+  bindImageAutoLoad();
+}
+
+function renderMyScreen() {
+  const counts = state.overview?.counts || {};
+  const stats = state.overview?.stats || {};
+  refs.myPanel.innerHTML = `
+    <section class="my-page compact-my-page">
+      <section class="stats-grid">
+        <article class="stats-card">
+          <span>累计浏览论文数</span>
+          <strong>${escapeHtml(String(stats.browsedArticles || 0))}</strong>
+        </article>
+        <article class="stats-card">
+          <span>累计收藏论文数</span>
+          <strong>${escapeHtml(String(counts.savedPapers || 0))}</strong>
+        </article>
+        <article class="stats-card">
+          <span>累计收藏图片数</span>
+          <strong>${escapeHtml(String(counts.savedImages || 0))}</strong>
+        </article>
+        <article class="stats-card">
+          <span>累计已精读论文数</span>
+          <strong>${escapeHtml(String(stats.deepReadCount || 0))}</strong>
+        </article>
+      </section>
+
+      <section class="hub-list">
+        <article class="hub-card">
+          <h3>阅读统计</h3>
+          <p>只保留与阅读行为直接相关的数据沉淀。</p>
+        </article>
+        <article class="hub-card">
+          <h3>设置</h3>
+          <p>后续接入账号安全、清空浏览记录和个性化偏好。</p>
+        </article>
+        <article class="hub-card">
+          <h3>意见反馈</h3>
+          <p>保留站内反馈入口，后续接入文本提交和联系邮箱。</p>
+        </article>
+        <article class="hub-card">
+          <h3>账号</h3>
+          <p>后续接入邮箱注册、密码登录和退出登录。</p>
+        </article>
+      </section>
+    </section>
+  `;
+}
+
+function openImageModal(key, items) {
+  const item = normalizeImageItem(items.find((entry) => entry.key === key));
+  if (!item) return;
+  const figureLabel = `Figure ${Number(item.figure_index ?? 0) + 1}`;
+  refs.modalBody.innerHTML = `
+    <div class="modal-meta">${escapeHtml(item.journal_title || "Nature")} · ${escapeHtml(formatDate(item.published_at))}</div>
+    <p class="modal-caption">${escapeHtml(item.title || figureLabel)}</p>
+    <h3>${escapeHtml(item.article_title || "")}</h3>
+    <div class="modal-image">
+      <img src="${escapeHtml(originalImageUrl(item))}" alt="${escapeHtml(item.title || item.article_title || "科研图片")}" />
+    </div>
+    <a class="primary-link" href="${escapeHtml(item.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
+  `;
+  refs.imageModal.classList.remove("hidden");
+}
+
+function renderReaderPreview() {
+  const preview = state.readerPreview;
+  const detail = preview.detail;
+  const figure = detail?.figures?.[preview.figureIndex];
+  if (!preview.open || !detail || !figure) {
+    refs.readerPreviewModal.classList.add("hidden");
+    refs.readerPreviewBody.innerHTML = "";
+    return;
+  }
+
+  refs.readerPreviewBody.innerHTML = `
+    <section class="reader-preview-shell">
+      <div class="reader-preview-meta">
+        <span>${escapeHtml(detail.journal_title || "Nature")} · ${escapeHtml(formatDate(detail.published_at))}</span>
+        <strong>${escapeHtml(String(preview.figureIndex + 1))} / ${escapeHtml(String(detail.figures.length))}</strong>
+      </div>
+      <h3 class="reader-preview-title">${escapeHtml(detail.title || "")}</h3>
+      <p class="reader-preview-caption">${escapeHtml(figure.title || `Figure ${preview.figureIndex + 1}`)}</p>
+      <div class="reader-preview-stage" id="readerPreviewStage">
+        <div class="reader-preview-frame" id="readerPreviewFrame">
+          <div class="reader-preview-zoom" id="readerPreviewZoom">
+            ${isFigureSaved(detail.id, figure.index) ? '<span class="saved-star preview-star">★</span>' : ""}
+            <img id="readerPreviewImage" class="reader-preview-image" src="${escapeHtml(originalImageUrl(figure))}" alt="${escapeHtml(figure.title || detail.title || "科研图片")}" />
+          </div>
+        </div>
+      </div>
+      <div class="reader-preview-hint">
+        <span>左右滑动切图</span>
+        <span>双击收藏</span>
+        ${preview.message ? `<strong>${escapeHtml(preview.message)}</strong>` : ""}
+      </div>
+    </section>
+  `;
+
+  positionReaderPreviewCard();
+  refs.readerPreviewModal.classList.remove("hidden");
+  applyReaderPreviewTransform();
+  bindReaderPreviewEvents();
+}
+
+function applyReaderPreviewTransform() {
+  const zoom = document.getElementById("readerPreviewZoom");
+  if (!zoom) return;
+  const preview = state.readerPreview;
+  zoom.style.transform = `translate(${preview.offsetX}px, ${preview.offsetY}px) scale(${preview.scale})`;
+}
+
+function bindReaderPreviewEvents() {
+  const stage = document.getElementById("readerPreviewStage");
+  if (!stage) return;
+
+  const preview = state.readerPreview;
+  const pointers = new Map();
+  let dragState = null;
+  let pinchState = null;
+  let lastTapAt = 0;
+
+  const clampScale = (value) => Math.max(1, Math.min(value, 4));
+  const distanceBetween = (left, right) => Math.hypot(right.x - left.x, right.y - left.y);
+
+  stage.addEventListener("pointerdown", (event) => {
+    stage.setPointerCapture?.(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 1) {
+      dragState = {
+        startX: event.clientX,
+        startY: event.clientY,
+        baseX: preview.offsetX,
+        baseY: preview.offsetY,
+      };
+    } else if (pointers.size === 2) {
+      const [first, second] = [...pointers.values()];
+      pinchState = {
+        distance: distanceBetween(first, second),
+        scale: preview.scale,
+      };
+      dragState = null;
+    }
+  });
+
+  stage.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointers.size === 2 && pinchState) {
+      const [first, second] = [...pointers.values()];
+      const nextDistance = distanceBetween(first, second);
+      const previousScale = preview.scale;
+      preview.scale = clampScale(pinchState.scale * (nextDistance / Math.max(pinchState.distance, 1)));
+      if (previousScale > 0) {
+        const ratio = preview.scale / previousScale;
+        preview.offsetX *= ratio;
+        preview.offsetY *= ratio;
+      }
+      applyReaderPreviewTransform();
+      return;
+    }
+
+    if (pointers.size === 1 && dragState && preview.scale > 1.01) {
+      preview.offsetX = dragState.baseX + (event.clientX - dragState.startX);
+      preview.offsetY = dragState.baseY + (event.clientY - dragState.startY);
+      applyReaderPreviewTransform();
+    }
+  });
+
+  const handlePointerEnd = (event) => {
+    const currentPoint = pointers.get(event.pointerId) || { x: event.clientX, y: event.clientY };
+    pointers.delete(event.pointerId);
+    stage.releasePointerCapture?.(event.pointerId);
+
+    if (pinchState && pointers.size < 2) {
+      pinchState = null;
+    }
+
+    if (pointers.size === 1) {
+      const remaining = [...pointers.values()][0];
+      dragState = {
+        startX: remaining.x,
+        startY: remaining.y,
+        baseX: preview.offsetX,
+        baseY: preview.offsetY,
+      };
+      return;
+    }
+
+    if (!dragState) return;
+    const deltaX = currentPoint.x - dragState.startX;
+    const deltaY = currentPoint.y - dragState.startY;
+    dragState = null;
+
+    if (preview.scale <= 1.01 && Math.abs(deltaX) < 12 && Math.abs(deltaY) < 12) {
+      const now = event.timeStamp;
+      if (now - lastTapAt < 280) {
+        lastTapAt = 0;
+        const item = figureItemFromPreview(preview.detail, preview.figureIndex);
+        if (item) {
+          void toggleImageSave(item).then(() => {
+            preview.message = "图片收藏已切换";
+            renderReaderPreview();
+          });
+        }
+      } else {
+        lastTapAt = now;
+      }
+      return;
+    }
+
+    if (preview.scale > 1.01) return;
+    if (Math.abs(deltaX) < 42 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+    const figures = preview.detail?.figures || [];
+    const nextIndex = deltaX < 0 ? Math.min(preview.figureIndex + 1, figures.length - 1) : Math.max(preview.figureIndex - 1, 0);
+    if (nextIndex !== preview.figureIndex) {
+      preview.figureIndex = nextIndex;
+      preview.message = "";
+      preview.scale = 1;
+      preview.offsetX = 0;
+      preview.offsetY = 0;
+      renderReaderPreview();
+    }
+  };
+
+  stage.addEventListener("pointerup", handlePointerEnd);
+  stage.addEventListener("pointercancel", handlePointerEnd);
+  stage.addEventListener("pointerleave", (event) => {
+    if (pointers.has(event.pointerId)) {
+      handlePointerEnd(event);
+    }
+  });
+}
+
 function rerenderCurrentScreen() {
   if (!state.overview) return;
   if (state.screen === "home") {
@@ -1719,6 +2419,9 @@ function attachGlobalEvents() {
   });
 
   document.addEventListener("click", async (event) => {
+    if (!event.target.closest(".column-action-wrap")) {
+      toggleColumnPopover(false);
+    }
     const target = event.target.closest("[data-go-screen]");
     if (!target) return;
     state.screen = target.dataset.goScreen;
@@ -1746,3 +2449,1072 @@ window.visualViewport?.addEventListener("resize", scheduleViewportSync);
 window.visualViewport?.addEventListener("scroll", scheduleViewportSync);
 
 init();
+
+function bindImageScrollAutoLoad() {
+  const panel = refs.imagePanel;
+  if (!panel) return;
+  panel.onscroll = null;
+  panel.onscroll = async () => {
+    if (state.screen !== "home" || state.mode !== "images") return;
+    if (state.images.loading || !state.images.hasMore) return;
+    const remaining = panel.scrollHeight - panel.scrollTop - panel.clientHeight;
+    if (remaining <= 220) {
+      await loadImagePage(false);
+    }
+  };
+}
+
+function renderImages() {
+  const journals = state.overview?.imageJournals || [];
+  const filters = [
+    `<button class="filter-pill ${state.images.journal === "all" ? "active" : ""}" data-journal="all" type="button">全部期刊</button>`,
+    ...journals.map(
+      (journal) =>
+        `<button class="filter-pill ${state.images.journal === journal ? "active" : ""}" data-journal="${escapeHtml(journal)}" type="button">${escapeHtml(journal)}</button>`,
+    ),
+  ].join("");
+
+  refs.imagePanel.innerHTML = `
+    <section class="image-toolbar">
+      <div class="filter-row image-filter-row">${filters}</div>
+      <button class="filter-pill ${state.images.savedOnly ? "active" : ""}" data-toggle-saved="true" type="button">只看已收藏</button>
+    </section>
+
+    <section class="image-masonry">
+      ${
+        state.images.items.length
+          ? state.images.items
+              .map((rawItem) => {
+                const item = normalizeImageItem(rawItem);
+                const displayUrl = displayImageUrl(item);
+                const ratio = getAspectRatio(state.imageMeta[displayUrl]);
+                const safeId = domSafeId(item.key);
+                return `
+                  <article class="image-tile" data-image-key="${escapeHtml(item.key)}">
+                    <div class="image-tile-media image-tile-stage" style="aspect-ratio:${ratio}">
+                      <div class="image-tile-frame" id="imageTileFrame-${safeId}">
+                        <canvas
+                          id="imageTileCanvas-${safeId}"
+                          class="figure-canvas"
+                          data-image-url="${escapeHtml(displayUrl)}"
+                          aria-label="${escapeHtml(item.title || "科研图片")}"
+                        ></canvas>
+                      </div>
+                      ${item.saved ? '<span class="saved-star image-tile-star">★</span>' : ""}
+                    </div>
+                  </article>
+                `;
+              })
+              .join("")
+          : '<div class="empty-card"><h2>暂无图片</h2><p>当前筛选条件下没有可展示图片。</p></div>'
+      }
+    </section>
+    <div id="imageLoadSentinel" class="image-load-sentinel" aria-hidden="true"></div>
+  `;
+
+  refs.imagePanel.querySelectorAll("[data-journal]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.images.journal = button.dataset.journal;
+      await loadImagePage(true);
+    });
+  });
+
+  refs.imagePanel.querySelector("[data-toggle-saved]")?.addEventListener("click", async () => {
+    state.images.savedOnly = !state.images.savedOnly;
+    await loadImagePage(true);
+  });
+
+  refs.imagePanel.querySelectorAll("[data-image-key]").forEach((tile) => {
+    let startX = 0;
+    let startY = 0;
+    let openTimer = null;
+    let lastTapAt = 0;
+
+    tile.addEventListener("pointerdown", (event) => {
+      startX = event.clientX;
+      startY = event.clientY;
+    });
+
+    tile.addEventListener("pointerup", async (event) => {
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+      if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) return;
+
+      const item = state.images.items.find((entry) => entry.key === tile.dataset.imageKey);
+      if (!item) return;
+      const now = event.timeStamp;
+      if (now - lastTapAt < 280) {
+        lastTapAt = 0;
+        if (openTimer) {
+          clearTimeout(openTimer);
+          openTimer = null;
+        }
+        await toggleImageSave(item);
+        renderImages();
+        return;
+      }
+
+      lastTapAt = now;
+      if (openTimer) {
+        clearTimeout(openTimer);
+      }
+      openTimer = window.setTimeout(() => {
+        openImageModal(tile.dataset.imageKey, state.images.items);
+        openTimer = null;
+      }, 220);
+    });
+  });
+
+  requestAnimationFrame(() => {
+    bindImageTileVisibility();
+    void ensureImageViewportFilled();
+  });
+  bindImageAutoLoad();
+  bindImageScrollAutoLoad();
+}
+
+function noteFeedbackMarkup(active = false) {
+  return `<span class="note-save-indicator ${active ? "visible" : ""}" id="noteSaveIndicator">${iconMarkup("checkCircle")}</span>`;
+}
+
+function columnMenuMarkup(detail) {
+  const columns = state.overview?.columns || [];
+  const current = detail?.state?.column || "";
+  return `
+    <div class="column-popover hidden" id="columnPopover">
+      <div class="column-popover-list">
+        ${
+          columns.length
+            ? columns
+                .map(
+                  (column) => `
+                    <button class="column-option ${current === column ? "active" : ""}" data-column-value="${escapeAttribute(column)}" type="button">
+                      <span>${escapeHtml(column)}</span>
+                    </button>
+                  `,
+                )
+                .join("")
+            : '<div class="column-empty">暂无专栏</div>'
+        }
+      </div>
+      <div class="column-create-row">
+        <input id="newColumnInput" type="text" placeholder="新建专栏" />
+        <button class="secondary-button" data-column-create="true" type="button">添加</button>
+      </div>
+    </div>
+  `;
+}
+
+function openImageModal(key, items) {
+  const item = normalizeImageItem(items.find((entry) => entry.key === key));
+  if (!item) return;
+  const figureLabel = `Figure ${Number(item.figure_index ?? 0) + 1}`;
+  const saved = isFigureSaved(item.article_id, item.figure_index);
+  refs.modalBody.innerHTML = `
+    <div class="modal-meta">${escapeHtml(item.journal_title || "Nature")} · ${escapeHtml(formatDate(item.published_at))}</div>
+    <p class="modal-caption">${escapeHtml(item.title || figureLabel)}</p>
+    <h3>${escapeHtml(item.article_title || "")}</h3>
+    <div class="modal-image" id="modalImageStage">
+      ${saved ? '<span class="saved-star modal-image-star">★</span>' : ""}
+      <img src="${escapeHtml(originalImageUrl(item))}" alt="${escapeHtml(item.title || item.article_title || "科研图片")}" />
+      <div class="modal-image-feedback" id="modalImageFeedback">已切换收藏</div>
+    </div>
+    <a class="primary-link" href="${escapeHtml(item.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
+  `;
+  refs.imageModal.classList.remove("hidden");
+
+  const stage = document.getElementById("modalImageStage");
+  const feedback = document.getElementById("modalImageFeedback");
+  if (!stage || !feedback) return;
+
+  let lastTapAt = 0;
+  let startX = 0;
+  let startY = 0;
+  let feedbackTimer = null;
+
+  const flashFeedback = (text) => {
+    feedback.textContent = text;
+    feedback.classList.add("visible");
+    if (feedbackTimer) {
+      clearTimeout(feedbackTimer);
+    }
+    feedbackTimer = window.setTimeout(() => {
+      feedback.classList.remove("visible");
+    }, 900);
+  };
+
+  stage.addEventListener("pointerdown", (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+  });
+
+  stage.addEventListener("pointerup", async (event) => {
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) return;
+    const now = event.timeStamp;
+    if (now - lastTapAt >= 280) {
+      lastTapAt = now;
+      return;
+    }
+    lastTapAt = 0;
+    await toggleImageSave(item);
+    const savedNow = isFigureSaved(item.article_id, item.figure_index);
+    const star = stage.querySelector(".modal-image-star");
+    if (savedNow && !star) {
+      stage.insertAdjacentHTML("afterbegin", '<span class="saved-star modal-image-star">★</span>');
+    } else if (!savedNow && star) {
+      star.remove();
+    }
+    flashFeedback(savedNow ? "已收藏图片" : "已取消收藏");
+  });
+}
+
+async function renderCollectionScreen() {
+  const allPapers = await api("/api/my/papers?query=");
+  if (state.collection.tab === "images") {
+    const images = await api("/api/my/images");
+    state.collection.savedImages = images.items;
+    images.items.forEach((item) => primeImageMeta(displayImageUrl(normalizeImageItem(item))));
+  }
+
+  const papers = allPapers.items.filter((item) => {
+    const matchesQuery =
+      !state.collection.query ||
+      [item.title, item.rss_title, item.journal_title, item.state?.note, item.state?.column]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(state.collection.query.toLowerCase());
+    const matchesJournal =
+      state.collection.journal === "all" || item.journal_title === state.collection.journal;
+    const matchesColumn =
+      state.collection.column === "all" || (item.state?.column || "") === state.collection.column;
+    return matchesQuery && matchesJournal && matchesColumn;
+  });
+
+  const visiblePaperIds = new Set(papers.map((item) => item.id));
+  state.collection.selectedPapers = (state.collection.selectedPapers || []).filter((id) => visiblePaperIds.has(id));
+
+  const savedImages = state.collection.savedImages.filter((item) => {
+    return state.collection.journal === "all" || item.journal_title === state.collection.journal;
+  });
+
+  const journalOptions = uniqueJournals(
+    state.collection.tab === "papers" ? allPapers.items : state.collection.savedImages,
+    (item) => item.journal_title,
+  );
+  const columnOptions = [
+    ...new Set(
+      allPapers.items
+        .map((item) => String(item.state?.column || "").trim())
+        .filter(Boolean),
+    ),
+  ].sort((left, right) => String(left).localeCompare(String(right), "zh-CN"));
+
+  const journalFilters = [
+    `<button class="filter-pill ${state.collection.journal === "all" ? "active" : ""}" data-collection-journal="all" type="button">全部期刊</button>`,
+    ...journalOptions.map(
+      (journal) =>
+        `<button class="filter-pill ${state.collection.journal === journal ? "active" : ""}" data-collection-journal="${escapeHtml(journal)}" type="button">${escapeHtml(journal)}</button>`,
+    ),
+  ].join("");
+
+  const columnFilters = [
+    `<button class="filter-pill ${state.collection.column === "all" ? "active" : ""}" data-collection-column="all" type="button">全部专栏</button>`,
+    ...columnOptions.map(
+      (column) =>
+        `<button class="filter-pill ${state.collection.column === column ? "active" : ""}" data-collection-column="${escapeHtml(column)}" type="button">${escapeHtml(column)}</button>`,
+    ),
+  ].join("");
+
+  const allSelected = papers.length > 0 && state.collection.selectedPapers.length === papers.length;
+
+  refs.collectionPanel.innerHTML = `
+    <section class="collection-page">
+      <header class="page-head">
+        <h1>收藏</h1>
+      </header>
+
+      <div class="sub-tabs">
+        <button class="sub-tab ${state.collection.tab === "papers" ? "active" : ""}" data-collection-tab="papers" type="button">论文收藏</button>
+        <button class="sub-tab ${state.collection.tab === "images" ? "active" : ""}" data-collection-tab="images" type="button">图片收藏</button>
+      </div>
+
+      <section class="filter-toolbar">
+        <div class="filter-row">${journalFilters}</div>
+        ${state.collection.tab === "papers" ? `<div class="filter-row">${columnFilters}</div>` : ""}
+        ${
+          state.collection.tab === "papers"
+            ? `
+          <div class="inline-actions">
+            <button id="toggleManagePapers" class="secondary-button" type="button" ${papers.length ? "" : "disabled"}>${state.collection.managing ? "完成" : "管理"}</button>
+            ${state.collection.managing ? `<button id="selectAllPapers" class="secondary-button" type="button" ${papers.length ? "" : "disabled"}>${allSelected ? "取消全选" : "全选"}</button>` : ""}
+            ${state.collection.managing ? `<button id="copyPaperUrls" class="secondary-button" type="button" ${state.collection.selectedPapers.length ? "" : "disabled"}>复制所选 URL</button>` : ""}
+          </div>
+          ${
+            state.collection.managing && state.collection.copiedSelection?.length
+              ? `<div class="bulk-hint">已复制 ${state.collection.copiedSelection.length} 条 URL，可直接移至“已归档”。<button class="secondary-button" id="archiveCopiedSelection" type="button">移至已归档</button></div>`
+              : ""
+          }
+        `
+            : ""
+        }
+      </section>
+
+      ${
+        state.collection.tab === "papers"
+          ? `
+        <div class="search-row">
+          <input id="collectionSearch" type="search" value="${escapeHtml(state.collection.query)}" placeholder="搜索标题 / 期刊 / 备注 / 专栏" />
+        </div>
+        <div class="list-stack">
+          ${
+            papers.length
+              ? papers
+                  .map(
+                    (item) => `
+                    <article class="saved-paper-card ${state.collection.managing && state.collection.selectedPapers.includes(item.id) ? "selected" : ""}" ${state.collection.managing ? `data-paper-row="${escapeHtml(item.id)}"` : ""}>
+                      <div class="saved-paper-head">
+                        ${
+                          state.collection.managing
+                            ? `
+                          <label class="paper-select-toggle">
+                            <input type="checkbox" data-select-paper="${escapeHtml(item.id)}" ${state.collection.selectedPapers.includes(item.id) ? "checked" : ""} />
+                            <span></span>
+                          </label>
+                        `
+                            : '<span class="paper-select-placeholder"></span>'
+                        }
+                        <div class="saved-paper-meta">${escapeHtml(item.journal_title || "")} · 收藏于 ${escapeHtml(formatDate(item.state?.saved_at || item.published_at))}</div>
+                      </div>
+                      ${item.state?.column ? `<div class="saved-paper-column">${escapeHtml(item.state.column)}</div>` : ""}
+                      <div class="saved-paper-body">
+                        <div class="saved-paper-copy">
+                          <h3>${escapeHtml(item.title || item.rss_title || "")}</h3>
+                          <p>${escapeHtml(item.state?.note || "暂无备注")}</p>
+                          <div class="saved-paper-actions">
+                            <a class="secondary-link" href="${escapeHtml(item.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
+                            <button class="secondary-button" data-unsave-paper="${escapeHtml(item.id)}" type="button">移出收藏</button>
+                          </div>
+                        </div>
+                        <div class="saved-paper-thumb">
+                          ${
+                            item.thumbnail_url
+                              ? `<img src="${escapeHtml(item.thumbnail_url)}" alt="${escapeHtml(item.title || "论文首图")}" loading="lazy" />`
+                              : `<div class="saved-paper-thumb-empty">无图</div>`
+                          }
+                        </div>
+                      </div>
+                    </article>
+                  `,
+                  )
+                  .join("")
+              : '<div class="empty-card"><h2>还没有收藏论文</h2><p>收藏后的论文会按专栏和期刊在这里集中管理。</p></div>'
+          }
+        </div>
+      `
+          : `
+        <div class="saved-image-grid">
+          ${
+            savedImages.length
+              ? savedImages
+                  .map((rawItem) => {
+                    const item = normalizeImageItem(rawItem);
+                    const ratio = getAspectRatio(state.imageMeta[displayImageUrl(item)]);
+                    return `
+                      <article class="saved-image-tile" data-saved-image="${escapeHtml(item.key)}">
+                        <div class="image-tile-media" style="aspect-ratio:${ratio}">
+                          <img src="${escapeHtml(displayImageUrl(item))}" alt="${escapeHtml(item.article_title || "科研图片")}" loading="lazy" />
+                        </div>
+                      </article>
+                    `;
+                  })
+                  .join("")
+              : '<div class="empty-card"><h2>还没有收藏图片</h2><p>双击图片后，图片会进入这里。</p></div>'
+          }
+        </div>
+      `
+      }
+    </section>
+  `;
+
+  refs.collectionPanel.querySelectorAll("[data-collection-tab]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.tab = button.dataset.collectionTab;
+      state.collection.journal = "all";
+      state.collection.column = "all";
+      exitCollectionManaging();
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-collection-journal]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.journal = button.dataset.collectionJournal;
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-collection-column]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.column = button.dataset.collectionColumn;
+      await renderCollectionScreen();
+    });
+  });
+
+  document.getElementById("collectionSearch")?.addEventListener("input", async (event) => {
+    state.collection.query = event.target.value;
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("toggleManagePapers")?.addEventListener("click", async () => {
+    if (state.collection.managing) {
+      exitCollectionManaging();
+    } else {
+      state.collection.managing = true;
+      state.collection.copiedSelection = [];
+    }
+    await renderCollectionScreen();
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-paper-row]").forEach((card) => {
+    card.addEventListener("click", async (event) => {
+      if (!state.collection.managing) return;
+      if (event.target.closest("a, button")) return;
+      toggleSelectedPaper(card.dataset.paperRow);
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-select-paper]").forEach((input) => {
+    input.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    input.addEventListener("change", async (event) => {
+      toggleSelectedPaper(event.target.dataset.selectPaper);
+      await renderCollectionScreen();
+    });
+  });
+
+  document.getElementById("selectAllPapers")?.addEventListener("click", async () => {
+    if (allSelected) {
+      clearSelectedPapers();
+    } else {
+      state.collection.selectedPapers = papers.map((item) => item.id);
+    }
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("copyPaperUrls")?.addEventListener("click", async () => {
+    const selectedSet = new Set(state.collection.selectedPapers);
+    const urls = papers
+      .filter((item) => selectedSet.has(item.id))
+      .map((item) => item.article_url)
+      .filter(Boolean)
+      .join("\n");
+    if (!urls) return;
+    try {
+      await navigator.clipboard.writeText(urls);
+    } catch {
+      window.prompt("复制以下原文 URL", urls);
+    }
+    state.collection.copiedSelection = papers.filter((item) => selectedSet.has(item.id)).map((item) => item.id);
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("archiveCopiedSelection")?.addEventListener("click", async () => {
+    for (const id of state.collection.copiedSelection || []) {
+      await api(`/api/articles/${id}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "column", column: "已归档" }),
+      });
+    }
+    exitCollectionManaging();
+    await loadBootstrap();
+    await renderCollectionScreen();
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-unsave-paper]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api(`/api/articles/${button.dataset.unsavePaper}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "unsave" }),
+      });
+      await loadBootstrap();
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-saved-image]").forEach((card) => {
+    card.addEventListener("click", () => {
+      openImageModal(card.dataset.savedImage, state.collection.savedImages);
+    });
+  });
+}
+
+async function renderCollectionScreen() {
+  const allPapers = await api("/api/my/papers?query=");
+  if (state.collection.tab === "images") {
+    const images = await api("/api/my/images");
+    state.collection.savedImages = images.items;
+    images.items.forEach((item) => primeImageMeta(displayImageUrl(normalizeImageItem(item))));
+  }
+
+  const papers = allPapers.items.filter((item) => {
+    const matchesQuery =
+      !state.collection.query ||
+      [item.title, item.rss_title, item.journal_title, item.state?.note, item.state?.column]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(state.collection.query.toLowerCase());
+    const matchesJournal =
+      state.collection.journal === "all" || item.journal_title === state.collection.journal;
+    const matchesColumn =
+      state.collection.column === "all" || (item.state?.column || "") === state.collection.column;
+    return matchesQuery && matchesJournal && matchesColumn;
+  });
+
+  const visiblePaperIds = new Set(papers.map((item) => item.id));
+  state.collection.selectedPapers = (state.collection.selectedPapers || []).filter((id) => visiblePaperIds.has(id));
+
+  const savedImages = state.collection.savedImages.filter((item) => {
+    return state.collection.journal === "all" || item.journal_title === state.collection.journal;
+  });
+
+  const journalOptions = uniqueJournals(
+    state.collection.tab === "papers" ? allPapers.items : state.collection.savedImages,
+    (item) => item.journal_title,
+  );
+  const columnOptions = [
+    ...new Set(
+      allPapers.items
+        .map((item) => String(item.state?.column || "").trim())
+        .filter(Boolean),
+    ),
+  ].sort((left, right) => String(left).localeCompare(String(right), "zh-CN"));
+
+  const journalFilters = [
+    `<button class="filter-pill ${state.collection.journal === "all" ? "active" : ""}" data-collection-journal="all" type="button">全部期刊</button>`,
+    ...journalOptions.map(
+      (journal) =>
+        `<button class="filter-pill ${state.collection.journal === journal ? "active" : ""}" data-collection-journal="${escapeHtml(journal)}" type="button">${escapeHtml(journal)}</button>`,
+    ),
+  ].join("");
+
+  const columnFilters = [
+    `<button class="filter-pill ${state.collection.column === "all" ? "active" : ""}" data-collection-column="all" type="button">全部专栏</button>`,
+    ...columnOptions.map(
+      (column) =>
+        `<button class="filter-pill ${state.collection.column === column ? "active" : ""}" data-collection-column="${escapeHtml(column)}" type="button">${escapeHtml(column)}</button>`,
+    ),
+  ].join("");
+
+  refs.collectionPanel.innerHTML = `
+    <section class="collection-page">
+      <header class="page-head">
+        <h1>收藏</h1>
+      </header>
+
+      <div class="sub-tabs">
+        <button class="sub-tab ${state.collection.tab === "papers" ? "active" : ""}" data-collection-tab="papers" type="button">论文收藏</button>
+        <button class="sub-tab ${state.collection.tab === "images" ? "active" : ""}" data-collection-tab="images" type="button">图片收藏</button>
+      </div>
+
+      <section class="filter-toolbar">
+        <div class="filter-row">${journalFilters}</div>
+        ${state.collection.tab === "papers" ? `<div class="filter-row">${columnFilters}</div>` : ""}
+        ${
+          state.collection.tab === "papers"
+            ? `
+          <div class="inline-actions">
+            <button id="toggleManagePapers" class="secondary-button" type="button" ${papers.length ? "" : "disabled"}>${state.collection.managing ? "完成" : "管理"}</button>
+            ${state.collection.managing ? `<button id="selectAllPapers" class="secondary-button" type="button" ${papers.length ? "" : "disabled"}>${state.collection.selectedPapers.length === papers.length && papers.length ? "取消全选" : "全选"}</button>` : ""}
+            ${state.collection.managing ? `<button id="copyPaperUrls" class="secondary-button" type="button" ${state.collection.selectedPapers.length ? "" : "disabled"}>复制所选 URL</button>` : ""}
+          </div>
+          ${
+            state.collection.managing && state.collection.copiedSelection?.length
+              ? `<div class="bulk-hint">已复制 ${state.collection.copiedSelection.length} 条 URL，可直接移至“已归档”。<button class="secondary-button" id="archiveCopiedSelection" type="button">移至已归档</button></div>`
+              : ""
+          }
+        `
+            : ""
+        }
+      </section>
+
+      ${
+        state.collection.tab === "papers"
+          ? `
+        <div class="search-row">
+          <input id="collectionSearch" type="search" value="${escapeHtml(state.collection.query)}" placeholder="搜索标题 / 期刊 / 备注 / 专栏" />
+        </div>
+        <div class="list-stack">
+          ${
+            papers.length
+              ? papers
+                  .map(
+                    (item) => `
+                    <article class="saved-paper-card ${state.collection.managing && state.collection.selectedPapers.includes(item.id) ? "selected" : ""}" ${state.collection.managing ? `data-paper-row="${escapeHtml(item.id)}"` : ""}>
+                      <div class="saved-paper-head">
+                        ${
+                          state.collection.managing
+                            ? `
+                          <label class="paper-select-toggle">
+                            <input type="checkbox" data-select-paper="${escapeHtml(item.id)}" ${state.collection.selectedPapers.includes(item.id) ? "checked" : ""} />
+                            <span></span>
+                          </label>
+                        `
+                            : '<span class="paper-select-placeholder"></span>'
+                        }
+                        <div class="saved-paper-meta">${escapeHtml(item.journal_title || "")} · 收藏于 ${escapeHtml(formatDate(item.state?.saved_at || item.published_at))}</div>
+                      </div>
+                      ${item.state?.column ? `<div class="saved-paper-column">${escapeHtml(item.state.column)}</div>` : ""}
+                      <div class="saved-paper-body">
+                        <div class="saved-paper-copy">
+                          <h3>${escapeHtml(item.title || item.rss_title || "")}</h3>
+                          <p>${escapeHtml(item.state?.note || "暂无备注")}</p>
+                          <div class="saved-paper-actions">
+                            <a class="secondary-link" href="${escapeHtml(item.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
+                            <button class="secondary-button" data-unsave-paper="${escapeHtml(item.id)}" type="button">移出收藏</button>
+                          </div>
+                        </div>
+                        <div class="saved-paper-thumb">
+                          ${
+                            item.thumbnail_url
+                              ? `<img src="${escapeHtml(item.thumbnail_url)}" alt="${escapeHtml(item.title || "论文首图")}" loading="lazy" />`
+                              : `<div class="saved-paper-thumb-empty">无图</div>`
+                          }
+                        </div>
+                      </div>
+                    </article>
+                  `,
+                  )
+                  .join("")
+              : '<div class="empty-card"><h2>还没有收藏论文</h2><p>收藏后的论文会按专栏和期刊在这里集中管理。</p></div>'
+          }
+        </div>
+      `
+          : `
+        <div class="saved-image-grid">
+          ${
+            savedImages.length
+              ? savedImages
+                  .map((rawItem) => {
+                    const item = normalizeImageItem(rawItem);
+                    const ratio = getAspectRatio(state.imageMeta[displayImageUrl(item)]);
+                    return `
+                      <article class="saved-image-tile" data-saved-image="${escapeHtml(item.key)}">
+                        <div class="image-tile-media" style="aspect-ratio:${ratio}">
+                          <img src="${escapeHtml(displayImageUrl(item))}" alt="${escapeHtml(item.article_title || "科研图片")}" loading="lazy" />
+                        </div>
+                      </article>
+                    `;
+                  })
+                  .join("")
+              : '<div class="empty-card"><h2>还没有收藏图片</h2><p>双击图片后，图片会进入这里。</p></div>'
+          }
+        </div>
+      `
+      }
+    </section>
+  `;
+
+  refs.collectionPanel.querySelectorAll("[data-collection-tab]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.tab = button.dataset.collectionTab;
+      state.collection.journal = "all";
+      state.collection.column = "all";
+      exitCollectionManaging();
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-collection-journal]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.journal = button.dataset.collectionJournal;
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-collection-column]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.column = button.dataset.collectionColumn;
+      await renderCollectionScreen();
+    });
+  });
+
+  document.getElementById("collectionSearch")?.addEventListener("input", async (event) => {
+    state.collection.query = event.target.value;
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("toggleManagePapers")?.addEventListener("click", async () => {
+    if (state.collection.managing) {
+      exitCollectionManaging();
+    } else {
+      state.collection.managing = true;
+      state.collection.copiedSelection = [];
+    }
+    await renderCollectionScreen();
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-paper-row]").forEach((card) => {
+    card.addEventListener("click", async (event) => {
+      if (!state.collection.managing) return;
+      if (event.target.closest("a, button")) return;
+      toggleSelectedPaper(card.dataset.paperRow);
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-select-paper]").forEach((input) => {
+    input.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    input.addEventListener("change", async (event) => {
+      toggleSelectedPaper(event.target.dataset.selectPaper);
+      await renderCollectionScreen();
+    });
+  });
+
+  document.getElementById("selectAllPapers")?.addEventListener("click", async () => {
+    if (state.collection.selectedPapers.length === papers.length) {
+      clearSelectedPapers();
+    } else {
+      state.collection.selectedPapers = papers.map((item) => item.id);
+    }
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("copyPaperUrls")?.addEventListener("click", async () => {
+    const selectedSet = new Set(state.collection.selectedPapers);
+    const urls = papers
+      .filter((item) => selectedSet.has(item.id))
+      .map((item) => item.article_url)
+      .filter(Boolean)
+      .join("\n");
+    if (!urls) return;
+    try {
+      await navigator.clipboard.writeText(urls);
+    } catch {
+      window.prompt("复制以下原文 URL", urls);
+    }
+    state.collection.copiedSelection = papers.filter((item) => selectedSet.has(item.id)).map((item) => item.id);
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("archiveCopiedSelection")?.addEventListener("click", async () => {
+    for (const id of state.collection.copiedSelection || []) {
+      await api(`/api/articles/${id}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "column", column: "已归档" }),
+      });
+    }
+    exitCollectionManaging();
+    await loadBootstrap();
+    await renderCollectionScreen();
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-unsave-paper]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api(`/api/articles/${button.dataset.unsavePaper}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "unsave" }),
+      });
+      await loadBootstrap();
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-saved-image]").forEach((card) => {
+    card.addEventListener("click", () => {
+      openImageModal(card.dataset.savedImage, state.collection.savedImages);
+    });
+  });
+}
+
+async function renderCollectionScreen() {
+  const allPapers = await api("/api/my/papers?query=");
+  if (state.collection.tab === "images") {
+    const images = await api("/api/my/images");
+    state.collection.savedImages = images.items;
+    images.items.forEach((item) => primeImageMeta(displayImageUrl(normalizeImageItem(item))));
+  }
+
+  const visiblePaperIds = new Set(
+    allPapers.items
+      .filter((item) => {
+        const matchesQuery =
+          !state.collection.query ||
+          [item.title, item.rss_title, item.journal_title, item.state?.note, item.state?.column]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(state.collection.query.toLowerCase());
+        const matchesJournal =
+          state.collection.journal === "all" || item.journal_title === state.collection.journal;
+        const matchesColumn =
+          state.collection.column === "all" || (item.state?.column || "") === state.collection.column;
+        return matchesQuery && matchesJournal && matchesColumn;
+      })
+      .map((item) => item.id),
+  );
+  state.collection.selectedPapers = (state.collection.selectedPapers || []).filter((id) =>
+    visiblePaperIds.has(id),
+  );
+
+  const papers = allPapers.items.filter((item) => visiblePaperIds.has(item.id));
+  const savedImages = state.collection.savedImages.filter((item) => {
+    return state.collection.journal === "all" || item.journal_title === state.collection.journal;
+  });
+
+  const journalOptions = uniqueJournals(
+    state.collection.tab === "papers" ? allPapers.items : state.collection.savedImages,
+    (item) => item.journal_title,
+  );
+  const columnOptions = [
+    ...new Set(
+      allPapers.items
+        .map((item) => String(item.state?.column || "").trim())
+        .filter(Boolean),
+    ),
+  ].sort((left, right) => String(left).localeCompare(String(right), "zh-CN"));
+
+  const journalFilters = [
+    `<button class="filter-pill ${state.collection.journal === "all" ? "active" : ""}" data-collection-journal="all" type="button">全部期刊</button>`,
+    ...journalOptions.map(
+      (journal) =>
+        `<button class="filter-pill ${state.collection.journal === journal ? "active" : ""}" data-collection-journal="${escapeHtml(journal)}" type="button">${escapeHtml(journal)}</button>`,
+    ),
+  ].join("");
+
+  const columnFilters = [
+    `<button class="filter-pill ${state.collection.column === "all" ? "active" : ""}" data-collection-column="all" type="button">全部专栏</button>`,
+    ...columnOptions.map(
+      (column) =>
+        `<button class="filter-pill ${state.collection.column === column ? "active" : ""}" data-collection-column="${escapeHtml(column)}" type="button">${escapeHtml(column)}</button>`,
+    ),
+  ].join("");
+
+  refs.collectionPanel.innerHTML = `
+    <section class="collection-page">
+      <header class="page-head">
+        <h1>收藏</h1>
+      </header>
+
+      <div class="sub-tabs">
+        <button class="sub-tab ${state.collection.tab === "papers" ? "active" : ""}" data-collection-tab="papers" type="button">论文收藏</button>
+        <button class="sub-tab ${state.collection.tab === "images" ? "active" : ""}" data-collection-tab="images" type="button">图片收藏</button>
+      </div>
+
+      <section class="filter-toolbar">
+        <div class="filter-row">${journalFilters}</div>
+        ${state.collection.tab === "papers" ? `<div class="filter-row">${columnFilters}</div>` : ""}
+        ${
+          state.collection.tab === "papers"
+            ? `
+          <div class="inline-actions">
+            <button id="toggleManagePapers" class="secondary-button" type="button">${state.collection.managing ? "完成" : "管理"}</button>
+            ${state.collection.managing ? `<button id="selectAllPapers" class="secondary-button" type="button" ${papers.length ? "" : "disabled"}>${state.collection.selectedPapers.length === papers.length && papers.length ? "取消全选" : "全选"}</button>` : ""}
+            ${state.collection.managing ? `<button id="copyPaperUrls" class="secondary-button" type="button" ${state.collection.selectedPapers.length ? "" : "disabled"}>复制所选 URL</button>` : ""}
+          </div>
+          ${
+            state.collection.managing && state.collection.copiedSelection?.length
+              ? `<div class="bulk-hint" id="collectionBulkHint">已复制 ${state.collection.copiedSelection.length} 条 URL，可直接移至“已归档”。<button class="secondary-button" id="archiveCopiedSelection" type="button">移至已归档</button></div>`
+              : ""
+          }
+        `
+            : ""
+        }
+      </section>
+
+      ${
+        state.collection.tab === "papers"
+          ? `
+        <div class="search-row">
+          <input id="collectionSearch" type="search" value="${escapeHtml(state.collection.query)}" placeholder="搜索标题 / 期刊 / 备注 / 专栏" />
+        </div>
+        <div class="list-stack">
+          ${
+            papers.length
+              ? papers
+                  .map(
+                    (item) => `
+                    <article class="saved-paper-card ${state.collection.managing && state.collection.selectedPapers.includes(item.id) ? "selected" : ""}" ${state.collection.managing ? `data-paper-row="${escapeHtml(item.id)}"` : ""}>
+                      <div class="saved-paper-head">
+                        ${
+                          state.collection.managing
+                            ? `
+                          <label class="paper-select-toggle">
+                            <input type="checkbox" data-select-paper="${escapeHtml(item.id)}" ${state.collection.selectedPapers.includes(item.id) ? "checked" : ""} />
+                            <span></span>
+                          </label>
+                        `
+                            : '<div class="paper-select-placeholder" aria-hidden="true"></div>'
+                        }
+                        <div class="saved-paper-meta">${escapeHtml(item.journal_title || "")} · 收藏于 ${escapeHtml(formatDate(item.state?.saved_at || item.published_at))}</div>
+                      </div>
+                      ${item.state?.column ? `<div class="saved-paper-column">${escapeHtml(item.state.column)}</div>` : ""}
+                      <div class="saved-paper-body">
+                        <div class="saved-paper-copy">
+                          <h3>${escapeHtml(item.title || item.rss_title || "")}</h3>
+                          <p>${escapeHtml(item.state?.note || "暂无备注")}</p>
+                          <div class="saved-paper-actions">
+                            <a class="secondary-link" href="${escapeHtml(item.article_url)}" target="_blank" rel="noreferrer">查看原文</a>
+                            <button class="secondary-button" data-unsave-paper="${escapeHtml(item.id)}" type="button">移出收藏</button>
+                          </div>
+                        </div>
+                        <div class="saved-paper-thumb">
+                          ${
+                            item.thumbnail_url
+                              ? `<img src="${escapeHtml(item.thumbnail_url)}" alt="${escapeHtml(item.title || "论文首图")}" loading="lazy" />`
+                              : `<div class="saved-paper-thumb-empty">无图</div>`
+                          }
+                        </div>
+                      </div>
+                    </article>
+                  `,
+                  )
+                  .join("")
+              : '<div class="empty-card"><h2>还没有收藏论文</h2><p>收藏后的论文会按专栏和期刊在这里集中管理。</p></div>'
+          }
+        </div>
+      `
+          : `
+        <div class="saved-image-grid">
+          ${
+            savedImages.length
+              ? savedImages
+                  .map((rawItem) => {
+                    const item = normalizeImageItem(rawItem);
+                    const ratio = getAspectRatio(state.imageMeta[displayImageUrl(item)]);
+                    return `
+                      <article class="saved-image-tile" data-saved-image="${escapeHtml(item.key)}">
+                        <div class="image-tile-media" style="aspect-ratio:${ratio}">
+                          <img src="${escapeHtml(displayImageUrl(item))}" alt="${escapeHtml(item.article_title || "科研图片")}" loading="lazy" />
+                        </div>
+                      </article>
+                    `;
+                  })
+                  .join("")
+              : '<div class="empty-card"><h2>还没有收藏图片</h2><p>双击图片后，图片会进入这里。</p></div>'
+          }
+        </div>
+      `
+      }
+    </section>
+  `;
+
+  refs.collectionPanel.querySelectorAll("[data-collection-tab]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.tab = button.dataset.collectionTab;
+      state.collection.journal = "all";
+      state.collection.column = "all";
+      exitCollectionManaging();
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-collection-journal]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.journal = button.dataset.collectionJournal;
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-collection-column]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.collection.column = button.dataset.collectionColumn;
+      await renderCollectionScreen();
+    });
+  });
+
+  document.getElementById("collectionSearch")?.addEventListener("input", async (event) => {
+    state.collection.query = event.target.value;
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("toggleManagePapers")?.addEventListener("click", async () => {
+    state.collection.managing = !state.collection.managing;
+    if (!state.collection.managing) {
+      exitCollectionManaging();
+    } else {
+      state.collection.copiedSelection = [];
+    }
+    await renderCollectionScreen();
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-paper-row]").forEach((row) => {
+    row.addEventListener("click", async (event) => {
+      if (event.target.closest("a,button")) return;
+      toggleSelectedPaper(row.dataset.paperRow);
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-select-paper]").forEach((input) => {
+    input.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    input.addEventListener("change", async (event) => {
+      toggleSelectedPaper(event.target.dataset.selectPaper);
+      await renderCollectionScreen();
+    });
+  });
+
+  document.getElementById("selectAllPapers")?.addEventListener("click", async () => {
+    if (state.collection.selectedPapers.length === papers.length) {
+      clearSelectedPapers();
+    } else {
+      state.collection.selectedPapers = papers.map((item) => item.id);
+    }
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("copyPaperUrls")?.addEventListener("click", async () => {
+    const selectedSet = new Set(state.collection.selectedPapers);
+    const urls = papers
+      .filter((item) => selectedSet.has(item.id))
+      .map((item) => item.article_url)
+      .filter(Boolean)
+      .join("\n");
+    if (!urls) return;
+    try {
+      await navigator.clipboard.writeText(urls);
+    } catch {
+      window.prompt("复制以下原文 URL", urls);
+    }
+    state.collection.copiedSelection = papers.filter((item) => selectedSet.has(item.id)).map((item) => item.id);
+    await renderCollectionScreen();
+  });
+
+  document.getElementById("archiveCopiedSelection")?.addEventListener("click", async () => {
+    for (const id of state.collection.copiedSelection || []) {
+      await api(`/api/articles/${id}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "column", column: "已归档" }),
+      });
+    }
+    exitCollectionManaging();
+    await loadBootstrap();
+    await renderCollectionScreen();
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-unsave-paper]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api(`/api/articles/${button.dataset.unsavePaper}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action: "unsave" }),
+      });
+      await loadBootstrap();
+      await renderCollectionScreen();
+    });
+  });
+
+  refs.collectionPanel.querySelectorAll("[data-saved-image]").forEach((card) => {
+    card.addEventListener("click", () => {
+      openImageModal(card.dataset.savedImage, state.collection.savedImages);
+    });
+  });
+}

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import io
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
+
+import requests
+from PIL import Image
 
 try:
     from zoneinfo import ZoneInfo
@@ -20,6 +24,7 @@ from .config import (
     RSS_SEED_PATH,
     STATE_PATH,
     SUBSCRIPTIONS_PATH,
+    THUMBNAIL_CACHE_DIR,
     USERS_DIR,
     USER_TIMEZONE,
 )
@@ -38,6 +43,9 @@ from .storage import read_json, write_json
 LOCK = Lock()
 TZ = ZoneInfo(USER_TIMEZONE)
 STATE_SCHEMA_VERSION = 3
+THUMBNAIL_MAX_EDGE = 560
+DEFAULT_ACTIVE_COLUMN = "未归档"
+DEFAULT_ARCHIVED_COLUMN = "已归档"
 
 
 def utc_now_iso() -> str:
@@ -59,6 +67,14 @@ def parse_iso(value: str | None) -> datetime | None:
 
 def article_cache_path(article_id: str):
     return ARTICLE_CACHE_DIR / f"{article_id}.json"
+
+
+def thumbnail_cache_path(article_id: str, figure_index: int):
+    return THUMBNAIL_CACHE_DIR / article_id / f"{int(figure_index)}.webp"
+
+
+def thumbnail_public_url(article_id: str, figure_index: int) -> str:
+    return f"/media/thumbs/{article_id}/{int(figure_index)}.webp"
 
 
 def normalize_user_id(raw_user_id: str | None) -> str:
@@ -91,6 +107,7 @@ def default_state(user_id: str | None = None) -> dict[str, Any]:
         },
         "article_states": {},
         "saved_images": {},
+        "columns": [DEFAULT_ACTIVE_COLUMN, DEFAULT_ARCHIVED_COLUMN],
         "reading": {
             "today": empty_resume_state(),
             "queue": empty_resume_state(),
@@ -101,12 +118,13 @@ def default_state(user_id: str | None = None) -> dict[str, Any]:
 
 
 def normalize_article_state(raw: Any) -> dict[str, Any]:
-    base = {"status": "unread", "note": "", "saved_at": None, "handled_at": None}
+    base = {"status": "unread", "note": "", "column": "", "saved_at": None, "handled_at": None}
     if isinstance(raw, dict):
         base.update(
             {
                 "status": str(raw.get("status", base["status"]) or base["status"]).strip() or "unread",
                 "note": str(raw.get("note", "") or "").strip(),
+                "column": str(raw.get("column", "") or "").strip(),
                 "saved_at": raw.get("saved_at"),
                 "handled_at": raw.get("handled_at"),
             }
@@ -220,6 +238,15 @@ def normalize_state(raw: Any, user_id: str | None = None) -> tuple[dict[str, Any
             base["reading"]["last_seen_archive_seq"] = 0
             changed = True
 
+        columns = raw.get("columns", [])
+        if not isinstance(columns, list):
+            columns = []
+            changed = True
+        base["columns"] = [str(item).strip() for item in columns if str(item).strip()]
+        for default_column in (DEFAULT_ACTIVE_COLUMN, DEFAULT_ARCHIVED_COLUMN):
+            if default_column not in base["columns"]:
+                base["columns"].append(default_column)
+
         if raw.get("schema_version") != STATE_SCHEMA_VERSION:
             changed = True
         return base, changed
@@ -235,6 +262,13 @@ def normalize_state(raw: Any, user_id: str | None = None) -> tuple[dict[str, Any
             normalized = normalize_saved_image(str(key), payload)
             if normalized:
                 base["saved_images"][f"{normalized['article_id']}:{normalized['figure_index']}"] = normalized
+
+    old_columns = raw.get("columns", [])
+    if isinstance(old_columns, list):
+        base["columns"] = [str(item).strip() for item in old_columns if str(item).strip()]
+    for default_column in (DEFAULT_ACTIVE_COLUMN, DEFAULT_ARCHIVED_COLUMN):
+        if default_column not in base["columns"]:
+            base["columns"].append(default_column)
 
     return base, True
 
@@ -420,6 +454,56 @@ def read_detail_cache(article_id: str) -> dict[str, Any]:
     return read_json(article_cache_path(article_id), {})
 
 
+def normalize_figure_payload(article_id: str, figure: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(figure or {})
+    figure_index = int(normalized.get("index", 0) or 0)
+    normalized["index"] = figure_index
+    normalized["thumbnail_url"] = thumbnail_public_url(article_id, figure_index)
+    return normalized
+
+
+def normalize_figures(article_id: str, figures: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    return [normalize_figure_payload(article_id, figure) for figure in (figures or [])]
+
+
+def resolve_figure_image_url(article_id: str, figure_index: int) -> str | None:
+    detail = read_detail_cache(article_id)
+    for figure in detail.get("figures", []):
+        try:
+            current_index = int(figure.get("index", -1))
+        except (TypeError, ValueError):
+            current_index = -1
+        if current_index == int(figure_index):
+            return str(figure.get("image_url", "")).strip() or None
+    return None
+
+
+def ensure_thumbnail_cached(article_id: str, figure_index: int) -> Any | None:
+    target = thumbnail_cache_path(article_id, figure_index)
+    if target.exists():
+        return target
+
+    image_url = resolve_figure_image_url(article_id, figure_index)
+    if not image_url:
+        return None
+
+    response = requests.get(image_url, timeout=25)
+    response.raise_for_status()
+
+    image = Image.open(io.BytesIO(response.content))
+    if image.mode not in {"RGB", "RGBA"}:
+        image = image.convert("RGBA")
+
+    background = Image.new("RGB", image.size, "#ffffff")
+    alpha = image.getchannel("A") if "A" in image.getbands() else None
+    background.paste(image.convert("RGB") if alpha is None else image, mask=alpha)
+    background.thumbnail((THUMBNAIL_MAX_EDGE, THUMBNAIL_MAX_EDGE), Image.Resampling.LANCZOS)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    background.save(target, format="WEBP", quality=84, method=6)
+    return target
+
+
 def prefetch_article_detail(article: dict[str, Any]) -> dict[str, Any]:
     figures = discover_figure_urls(article["doi"])
     hydrated_at = utc_now_iso()
@@ -431,13 +515,13 @@ def prefetch_article_detail(article: dict[str, Any]) -> dict[str, Any]:
             "article": article["article_url"],
             "figures": [figure["image_url"] for figure in figures],
         },
-        "figures": figures,
+        "figures": normalize_figures(article["id"], figures),
         "detail_hydrated_at": hydrated_at,
     }
     write_json(article_cache_path(article["id"]), detail)
     article["detail_hydrated_at"] = hydrated_at
-    article["figure_count"] = len(figures)
-    article["thumbnail_url"] = figures[0]["image_url"] if figures else None
+    article["figure_count"] = len(detail["figures"])
+    article["thumbnail_url"] = detail["figures"][0]["thumbnail_url"] if detail["figures"] else None
     return detail
 
 
@@ -571,7 +655,7 @@ def hydrate_article_details(
         save_articles(sorted(article_map.values(), key=article_sort_key, reverse=True))
 
     merged = merge_article_with_state(article, state)
-    merged["figures"] = detail.get("figures", [])
+    merged["figures"] = normalize_figures(article_id, detail.get("figures", []))
     merged["detail_hydrated_at"] = detail.get("detail_hydrated_at")
     merged["source_urls"] = detail.get("source_urls", {})
     return merged
@@ -689,21 +773,33 @@ def set_article_action(
         article_state.update(get_article_state(state, article_id))
 
         if action == "viewed":
-            article_state["status"] = "viewed"
+            if article_state.get("status") != "saved":
+                article_state["status"] = "viewed"
             article_state["handled_at"] = now_iso
         elif action == "dismissed":
             article_state["status"] = "dismissed"
             article_state["handled_at"] = now_iso
         elif action == "saved":
             article_state["status"] = "saved"
+            article_state["column"] = article_state.get("column") or DEFAULT_ACTIVE_COLUMN
             article_state["saved_at"] = now_iso
             article_state["handled_at"] = now_iso
+            columns = state.setdefault("columns", default_state(user_id)["columns"])
+            for default_column in (DEFAULT_ACTIVE_COLUMN, DEFAULT_ARCHIVED_COLUMN):
+                if default_column not in columns:
+                    columns.append(default_column)
         elif action == "unsave":
             article_state["status"] = "viewed"
             article_state["saved_at"] = None
             article_state["handled_at"] = now_iso
         elif action == "note":
             article_state["note"] = str(payload.get("note", "")).strip()
+        elif action == "column":
+            column_name = str(payload.get("column", "")).strip()
+            article_state["column"] = column_name
+            columns = state.setdefault("columns", [])
+            if column_name and column_name not in columns:
+                columns.append(column_name)
         elif action == "reset":
             article_state["status"] = "unread"
             article_state["saved_at"] = None
@@ -758,17 +854,9 @@ def get_recent_image_tiles(
 ) -> dict[str, Any]:
     initialize_if_empty()
     state = load_state(user_id)
-    cutoff = datetime.now(TZ).date() - timedelta(days=IMAGE_LOOKBACK_DAYS)
     tiles: list[dict[str, Any]] = []
 
     for article in sorted(load_articles(), key=article_sort_key, reverse=True):
-        published_at = article.get("published_at")
-        if published_at:
-            try:
-                if datetime.fromisoformat(published_at).date() < cutoff:
-                    continue
-            except ValueError:
-                pass
         if journal and journal != "all" and article.get("journal_title") != journal:
             continue
         detail = hydrate_article_details(article["id"], state, hydrate_missing=False)
@@ -785,6 +873,7 @@ def get_recent_image_tiles(
                     "article_id": article["id"],
                     "figure_index": figure["index"],
                     "image_url": figure["image_url"],
+                    "thumbnail_url": figure.get("thumbnail_url") or thumbnail_public_url(article["id"], figure["index"]),
                     "title": figure["title"],
                     "article_title": article.get("title"),
                     "journal_title": article.get("journal_title"),
@@ -847,6 +936,7 @@ def get_saved_images(user_id: str | None) -> list[dict[str, Any]]:
             {
                 "key": key,
                 "image_url": image_url,
+                "thumbnail_url": figure.get("thumbnail_url") if figure else thumbnail_public_url(item["article_id"], item["figure_index"]),
                 "title": figure.get("title") if figure else None,
                 "saved_at": item.get("saved_at"),
                 "article_id": item["article_id"],
@@ -928,6 +1018,13 @@ def get_overview(user_id: str | None) -> dict[str, Any]:
         [item for item in state.get("article_states", {}).values() if item.get("status") == "viewed"]
     )
     journals = sorted({article.get("journal_title") for article in articles if article.get("journal_title")})
+    image_journals = sorted(
+        {
+            article.get("journal_title")
+            for article in articles
+            if article.get("journal_title") and int(article.get("figure_count", 0) or 0) > 0
+        }
+    )
     subscriptions = sorted(load_subscriptions(), key=lambda item: item.get("priority", 999))
     last_synced_at = max([item.get("last_synced_at") for item in subscriptions if item.get("last_synced_at")] or [None])
     reading = state.get("reading", {})
@@ -947,11 +1044,13 @@ def get_overview(user_id: str | None) -> dict[str, Any]:
         },
         "subscriptions": subscriptions,
         "journals": journals,
+        "imageJournals": image_journals,
         "lastSyncedAt": last_synced_at,
         "archive": {
             "articleCount": len(articles),
             "latestArchiveSeq": max_archive_seq(articles),
         },
+        "columns": state.get("columns", []),
         "reading": {
             "today": reading.get("today", empty_resume_state()),
             "queue": reading.get("queue", empty_resume_state()),

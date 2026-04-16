@@ -16,6 +16,7 @@ def runtime_data_dir() -> Path:
 
 DATA_DIR = runtime_data_dir()
 ARTICLE_CACHE_DIR = DATA_DIR / "article_cache"
+THUMBNAIL_CACHE_DIR = DATA_DIR / "thumbnails"
 SUBSCRIPTIONS_PATH = DATA_DIR / "subscriptions.json"
 ARTICLES_PATH = DATA_DIR / "articles.json"
 STATE_PATH = DATA_DIR / "state.json"
